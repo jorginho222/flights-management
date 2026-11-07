@@ -1,11 +1,12 @@
 import { CreateAirplaneDto } from '../../airplanes/dto/create.airplane.dto';
 import { AirlineDto } from '../../airlines/dto/airline.dto';
+import { AirportDto } from '../../airports/dto/airport.dto';
 import {
   IsDate,
   IsNotEmpty,
   IsNumber,
-  IsString,
   IsUUID,
+  ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
@@ -49,20 +50,23 @@ export class CreateFlightDto {
   airplane: CreateAirplaneDto;
 
   @ApiProperty({
-    example: 'New York',
-    description: 'Ciudad de origen',
+    type: AirportDto,
+    description: 'Aeropuerto de origen',
   })
-  @IsString()
   @IsNotEmpty()
-  origin: string;
+  @ValidateNested()
+  @Type(() => AirportDto)
+  origin: AirportDto;
 
   @ApiProperty({
-    example: 'Los Angeles',
-    description: 'Ciudad de destino',
+    type: AirportDto,
+    description:
+      'Aeropuerto de destino. La distancia en millas se calcula a partir de los aeropuertos',
   })
-  @IsString()
   @IsNotEmpty()
-  destination: string;
+  @ValidateNested()
+  @Type(() => AirportDto)
+  destination: AirportDto;
 
   @ApiProperty({
     example: 1000,
@@ -70,11 +74,4 @@ export class CreateFlightDto {
   })
   @IsNumber({ maxDecimalPlaces: 2 })
   basePrice: number;
-
-  @ApiProperty({
-    example: 1000,
-    description: 'Distancia del vuelo en kilómetros',
-  })
-  @IsNumber()
-  distance: number;
 }

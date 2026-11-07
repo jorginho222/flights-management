@@ -8,6 +8,7 @@ import { App } from 'supertest/types';
 import { Repository } from 'typeorm';
 import { Airplane } from './entities/airplane.entity';
 import { Airline } from '../airlines/entities/airline.entity';
+import { Airport } from '../airports/entities/airport.entity';
 import { Flight } from '../flights/entities/flight.entity';
 import { Order } from '../orders/entities/order.entity';
 import { Passenger } from '../passengers/entities/passenger.entity';
@@ -73,7 +74,15 @@ describe('POST /airplanes/import', () => {
         TypeOrmModule.forRoot({
           type: 'sqlite',
           database: ':memory:',
-          entities: [Airplane, Flight, Airline, Order, Passenger, User],
+          entities: [
+            Airplane,
+            Flight,
+            Airline,
+            Airport,
+            Order,
+            Passenger,
+            User,
+          ],
           synchronize: true,
         }),
         AirplanesModule,

@@ -1,4 +1,5 @@
 import { IsDate, IsUUID } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class UpdateFlightScheduleDto {
@@ -14,6 +15,7 @@ export class UpdateFlightScheduleDto {
     description: 'Nueva fecha y hora de salida',
   })
   @IsDate()
+  @Type(() => Date)
   departure: Date;
 
   @ApiProperty({
@@ -21,5 +23,6 @@ export class UpdateFlightScheduleDto {
     description: 'Nueva fecha y hora de llegada',
   })
   @IsDate()
+  @Type(() => Date)
   arrival: Date;
 }

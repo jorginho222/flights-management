@@ -32,7 +32,7 @@ export class FlightsSearchService {
 
     return await this.search({
       where: this.buildSearchWhere(searchDto),
-      relations: { airline: true },
+      relations: { airline: true, origin: true, destination: true },
       order: { departure: 'ASC', id: 'ASC' },
       skip: (page - 1) * limit,
       take: limit,
@@ -45,8 +45,8 @@ export class FlightsSearchService {
     const { origin, destination, status, airlineCode } = searchDto;
     const where: FindOptionsWhere<Flight> = {};
 
-    if (origin) where.origin = origin;
-    if (destination) where.destination = destination;
+    if (origin) where.origin = { iataCode: origin };
+    if (destination) where.destination = { iataCode: destination };
     if (status) where.status = status;
     if (airlineCode) where.airline = { code: airlineCode };
 

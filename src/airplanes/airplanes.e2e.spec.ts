@@ -6,6 +6,7 @@ import { App } from 'supertest/types';
 import { DataSource, DeepPartial, Repository } from 'typeorm';
 import { Airplane } from './entities/airplane.entity';
 import { Airline } from '../airlines/entities/airline.entity';
+import { Airport } from '../airports/entities/airport.entity';
 import { Flight } from '../flights/entities/flight.entity';
 import { Order } from '../orders/entities/order.entity';
 import { Passenger } from '../passengers/entities/passenger.entity';
@@ -17,6 +18,7 @@ import { FlightStatus } from '../flights/types/flight.status';
 import { FlightCode } from '../flights/valueObjects/flight.code';
 import { LuggageRules } from '../airlines/valueObjects/luggageRules';
 import { CreateAirplaneDto } from './dto/create.airplane.dto';
+import { AirportType } from '../airports/types/airport.type';
 
 const UNKNOWN_ID = '00000000-0000-4000-8000-000000000000';
 
@@ -38,6 +40,23 @@ describe('Airplanes endpoints', () => {
   let flights: Repository<Flight>;
   let airlines: Repository<Airline>;
   const s3Service = { deleteFile: jest.fn() };
+  let origin: Airport;
+  let destination: Airport;
+
+  const airportData = (
+    iataCode: string,
+    latitude: number,
+    longitude: number,
+  ): DeepPartial<Airport> => ({
+    iataCode,
+    name: `${iataCode} airport`,
+    countryCode: 'AR',
+    countryName: 'Argentina',
+    continent: 'SA',
+    latitude,
+    longitude,
+    type: AirportType.Large,
+  });
 
   const boeing = buildAirplane(
     '11111111-1111-4111-8111-111111111111',
@@ -56,9 +75,9 @@ describe('Airplanes endpoints', () => {
   ): Promise<void> => {
     await flights.save({
       code: new FlightCode('AL', 1234),
-      origin: 'Buenos Aires',
-      destination: 'Córdoba',
-      distance: 650,
+      origin,
+      destination,
+      distance: 400,
       airplane,
       airline,
       departure: new Date('2026-12-01T10:00:00Z'),
@@ -75,7 +94,15 @@ describe('Airplanes endpoints', () => {
         TypeOrmModule.forRoot({
           type: 'sqlite',
           database: ':memory:',
-          entities: [Airplane, Flight, Airline, Order, Passenger, User],
+          entities: [
+            Airplane,
+            Flight,
+            Airline,
+            Airport,
+            Order,
+            Passenger,
+            User,
+          ],
           synchronize: true,
         }),
         AirplanesModule,
@@ -92,6 +119,12 @@ describe('Airplanes endpoints', () => {
     airplanes = module.get(getRepositoryToken(Airplane));
     flights = module.get(getRepositoryToken(Flight));
     airlines = module.get(DataSource).getRepository(Airline);
+
+    const airports = module.get(DataSource).getRepository(Airport);
+    [origin, destination] = await airports.save([
+      airportData('EZE', -34.8222, -58.5358),
+      airportData('COR', -31.3236, -64.208),
+    ]);
   });
 
   beforeEach(async () => {

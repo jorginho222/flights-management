@@ -6,6 +6,7 @@ import * as process from 'node:process';
 import { Order } from './src/orders/entities/order.entity';
 import { User } from './src/users/entities/user.entity';
 import { Airline } from './src/airlines/entities/airline.entity';
+import { Airport } from './src/airports/entities/airport.entity';
 import * as dotenv from 'dotenv';
 
 // Load .env.local, then .env (neither overrides existing azure production env vars)
@@ -19,7 +20,7 @@ const ormConfigOptions: DataSourceOptions = {
   port: process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 5432,
   username: process.env.DB_USER ?? 'postgres',
   password: process.env.DB_PASSWORD ?? 'postgres',
-  entities: [Airplane, Flight, Passenger, Airline, Order, User],
+  entities: [Airplane, Flight, Passenger, Airline, Airport, Order, User],
   logging: true,
   synchronize: isDevelopment,
   ssl: isDevelopment ? false : { rejectUnauthorized: false },

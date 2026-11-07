@@ -19,6 +19,7 @@ npm run test:watch                             # Watch mode
 npm run test:cov                               # Coverage report
 npm run test:e2e                               # Tests under test/ only (see Testing)
 npm run test:debug                             # Debug tests with the Node inspector
+npm run airports:import                        # Download OurAirports data and upsert the airport table
 ```
 
 **Do not run `npm run build`.** Run `npm run migration:run` on its own instead (see Migrations).
@@ -97,6 +98,8 @@ Because development relies on `synchronize`, a schema change on an entity works 
 Money columns use `moneyColumn` from `src/shared/common/money.ts` (`numeric(12,2)`, with a transformer because the Postgres driver returns numeric values as strings). Amounts are rounded with `roundMoney` to 2 decimals, and each ticket price is rounded before multiplying by quantity.
 
 **Flight search uses HTTP `QUERY /flights`** with a JSON `SearchFlightsDto` body, and there is no `GET /flights`. The route decorator is `@QueryMethod()`, which needs a newer Nest than 11.0.7 (the project is on 11.2.8); `@Query()` is still the query-string param decorator. In specs, supertest's types need a cast to call it as a method (see `flights.query.e2e.spec.ts`), and with curl use `-X QUERY`.
+
+**Airports come from OurAirports.** `npm run airports:import` (`src/airports/commands/import.airports.command.ts`) boots a small Nest context with only TypeORM, not the whole `AppModule`. It runs from the host like `migration:run`. `AirportsImportService` keeps large and medium airports with an IATA code and upserts them by `iataCode` in one transaction, so existing ids stay stable. `Flight.origin` and `destination` are `ManyToOne` relations to `Airport`. `Flight.setRoute` sets `distance` from `Airport.distanceTo`, the haversine distance in statute miles. `CreateFlightDto` takes nested `AirportDto` objects, but `FlightsUpsertService.create` only uses their `id` and loads the stored rows. Flight search filters by IATA code.
 
 **Spreadsheet imports share `SpreadsheetImporter`** (`src/shared/import/`). `POST /airlines/import` and `POST /airplanes/import` take an .xlsx in the `file` field, find columns by header, validate each row with the module's DTO and save all or nothing. A new import extends the base class (columns, `buildDto`, `toColumnName`, `findConflicts`, `save`) and uses the `@SpreadsheetUpload()` decorator. Sample files live in `data/`.
 

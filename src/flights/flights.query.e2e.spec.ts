@@ -51,7 +51,7 @@ describe('QUERY /flights', () => {
 
     const response = await query()
       .send({
-        origin: 'New York',
+        origin: 'jfk',
         departureFrom: '2026-12-01T00:00:00Z',
         status: FlightStatus.Scheduled,
         limit: 5,
@@ -61,7 +61,7 @@ describe('QUERY /flights', () => {
     expect(response.body).toEqual([{ id: 'flight-1' }]);
     const dto = searchFlights.mock.calls[0][0];
     expect(dto).toBeInstanceOf(SearchFlightsDto);
-    expect(dto.origin).toBe('New York');
+    expect(dto.origin).toBe('JFK');
     expect(dto.departureFrom).toEqual(new Date('2026-12-01T00:00:00Z'));
     expect(dto.limit).toBe(5);
   });
@@ -69,7 +69,7 @@ describe('QUERY /flights', () => {
   it('accepts a charset on the content type', async () => {
     await query()
       .set('Content-Type', 'application/json; charset=utf-8')
-      .send(JSON.stringify({ origin: 'New York' }))
+      .send(JSON.stringify({ origin: 'JFK' }))
       .expect(200);
 
     expect(searchFlights).toHaveBeenCalled();
@@ -87,6 +87,7 @@ describe('QUERY /flights', () => {
     ['a page below the minimum', { page: 0 }],
     ['an invalid date', { departureFrom: 'not-a-date' }],
     ['a non-string filter', { origin: { $ne: 'x' } }],
+    ['an origin that is not an IATA code', { origin: 'New York' }],
   ])('returns 400 for %s', async (_name, body) => {
     await query().send(body).expect(400);
 

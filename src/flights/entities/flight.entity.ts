@@ -17,6 +17,7 @@ import { BadRequestException } from '@nestjs/common';
 import { Airline } from '../../airlines/entities/airline.entity';
 import { Order } from '../../orders/entities/order.entity';
 import { moneyColumn } from '../../shared/common/money';
+import { Airport } from '../../airports/entities/airport.entity';
 
 @Entity()
 // Unique on the code's prefix and correlative. TypeORM can't declare an index
@@ -30,12 +31,13 @@ export class Flight {
   @Column('json', { transformer: flightCodeTransformer })
   readonly code: FlightCode;
 
-  @Column()
-  origin: string;
+  @ManyToOne(() => Airport, { nullable: false })
+  origin: Airport;
 
-  @Column()
-  destination: string;
+  @ManyToOne(() => Airport, { nullable: false })
+  destination: Airport;
 
+  // Great-circle distance between the airports in statute miles, set by setRoute
   @Column()
   distance: number;
 
@@ -102,13 +104,21 @@ export class Flight {
     this.arrival = arrival;
   }
 
+  setRoute(origin: Airport, destination: Airport) {
+    this.origin = origin;
+    this.destination = destination;
+    this.validateRoute();
+
+    this.distance = origin.distanceTo(destination);
+  }
+
   validate() {
     this.validateRoute();
     this.validateSchedule();
   }
 
   validateRoute() {
-    if (this.origin === this.destination) {
+    if (this.origin.iataCode === this.destination.iataCode) {
       throw new Error('Origin and destination must be different');
     }
   }

@@ -2,27 +2,38 @@ import {
   IsDate,
   IsEnum,
   IsInt,
+  Matches,
   IsNotEmpty,
   IsOptional,
   IsString,
   Max,
   Min,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { FlightStatus } from '../types/flight.status';
+import {
+  AIRPORT_CODE_PATTERN,
+  toUpperCase,
+} from '../../airports/dto/airport.dto';
 
 export class SearchFlightsDto {
-  @ApiPropertyOptional({ example: 'New York', description: 'Ciudad de origen' })
+  @ApiPropertyOptional({
+    example: 'JFK',
+    description: 'Código IATA del aeropuerto de origen',
+  })
   @IsOptional()
-  @IsString()
-  @IsNotEmpty()
+  @Transform(toUpperCase)
+  @Matches(AIRPORT_CODE_PATTERN)
   origin?: string;
 
-  @ApiPropertyOptional({ example: 'London', description: 'Ciudad de destino' })
+  @ApiPropertyOptional({
+    example: 'LHR',
+    description: 'Código IATA del aeropuerto de destino',
+  })
   @IsOptional()
-  @IsString()
-  @IsNotEmpty()
+  @Transform(toUpperCase)
+  @Matches(AIRPORT_CODE_PATTERN)
   destination?: string;
 
   @ApiPropertyOptional({

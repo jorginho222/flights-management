@@ -9,10 +9,11 @@ import { Passenger } from '../passengers/entities/passenger.entity';
 import { AirplanesModule } from '../airplanes/airplanes.module';
 import { EventEmitter2, EventEmitterModule } from '@nestjs/event-emitter';
 import { Airline } from '../airlines/entities/airline.entity';
+import { Airport } from '../airports/entities/airport.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Flight, Passenger, Airline]),
+    TypeOrmModule.forFeature([Flight, Passenger, Airline, Airport]),
     AirplanesModule,
     EventEmitterModule.forRoot(),
   ],
