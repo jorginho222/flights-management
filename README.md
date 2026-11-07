@@ -124,6 +124,17 @@ curl -X QUERY http://localhost:3000/flights \
   -d '{"origin": "EZE", "page": 1, "limit": 20}'
 ```
 
+The response holds one page of flights in `items`, with their airline and airports, and the totals in `meta`:
+
+```json
+{
+  "items": [{ "id": "…", "code": { "prefix": "LZ", "correlative": 1 } }],
+  "meta": { "page": 1, "limit": 20, "totalItems": 45, "totalPages": 3 }
+}
+```
+
+A page past the end returns an empty `items` list with the real totals.
+
 The bundled Swagger UI can't display `QUERY` operations, so this endpoint is missing from `/docs`, though it is in `/docs-json`.
 
 ### Airports
