@@ -1,4 +1,8 @@
-import { ConflictException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource, QueryFailedError } from 'typeorm';
 import { FlightsUpsertService } from './flights.upsert.service';
@@ -11,6 +15,7 @@ import { UpdateFlightStatusDto } from './dto/update.flight.status.dto';
 import { CreateFlightDto } from './dto/create.flight.dto';
 import { Airplane } from '../airplanes/entities/airplane.entity';
 import { FlightClasses } from './types/flight.classes';
+import { Airport } from '../airports/entities/airport.entity';
 
 const uniqueViolation = (constraint: string): QueryFailedError =>
   new QueryFailedError('query', [], {
@@ -96,17 +101,28 @@ describe('FlightsUpsertService', () => {
   };
 
   describe('create', () => {
+    const buildAirport = (
+      id: string,
+      iataCode: string,
+      latitude: number,
+      longitude: number,
+    ): Airport =>
+      Object.assign(new Airport(), { id, iataCode, latitude, longitude });
+
+    const ezeiza = buildAirport('eze-id', 'EZE', -34.8222, -58.5358);
+    const cordoba = buildAirport('cor-id', 'COR', -31.3236, -64.208);
+    const airports = new Map([ezeiza, cordoba].map((a) => [a.id, a]));
+
     const createDto = {
       id: flightId,
       airline: { id: 'airline-id', code: 'AL' },
       airplane: { id: 'airplane-id' },
-      origin: 'Buenos Aires',
-      destination: 'Córdoba',
-      distance: 650,
+      origin: { id: 'eze-id' },
+      destination: { id: 'cor-id' },
       departure,
       arrival,
       basePrice: 100,
-    } as CreateFlightDto;
+    } as unknown as CreateFlightDto;
 
     const airplaneWith = (passengersCapacity: number): Airplane =>
       Object.assign(new Airplane(), {
@@ -124,7 +140,51 @@ describe('FlightsUpsertService', () => {
 
     beforeEach(() => {
       airplaneSearch.mockResolvedValue([airplaneWith(6)]);
-      manager.findOne.mockResolvedValue(airline);
+      manager.findOne.mockImplementation(
+        (entity: unknown, options: { where: { id: string } }) =>
+          Promise.resolve(
+            entity === Airline
+              ? airline
+              : (airports.get(options.where.id) ?? null),
+          ),
+      );
+    });
+
+    it('sets the route from the stored airports and computes the distance in miles', async () => {
+      const created = await service.create({
+        ...createDto,
+        origin: { id: 'eze-id', latitude: 0, longitude: 0 },
+      } as unknown as CreateFlightDto);
+
+      expect(created.origin).toBe(ezeiza);
+      expect(created.destination).toBe(cordoba);
+      expect(created.distance).toBeGreaterThan(395);
+      expect(created.distance).toBeLessThan(410);
+    });
+
+    it('returns not found and does not save when an airport does not exist', async () => {
+      const result = service.create({
+        ...createDto,
+        destination: { id: 'missing-id' },
+      } as unknown as CreateFlightDto);
+
+      await expect(result).rejects.toThrow(NotFoundException);
+      await expect(result).rejects.toThrow('Airport missing-id not found');
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it('returns bad request for a route that starts and ends at the same airport', async () => {
+      const result = service.create({
+        ...createDto,
+        destination: { id: 'eze-id' },
+      } as unknown as CreateFlightDto);
+
+      await expect(result).rejects.toThrow(BadRequestException);
+      await expect(result).rejects.toThrow(
+        'Origin and destination must be different',
+      );
+
+      expect(manager.save).not.toHaveBeenCalled();
     });
 
     it('builds the seats from the airplane seat config', async () => {
@@ -168,9 +228,21 @@ describe('FlightsUpsertService', () => {
       const created = await service.create({
         ...createDto,
         airline: { ...createDto.airline, code: 'ZZ' },
-      } as CreateFlightDto);
+      } as unknown as CreateFlightDto);
 
       expect(created.code.getPrefix()).toBe('AL');
+    });
+
+    it('returns bad request when the departure is after the arrival', async () => {
+      const result = service.create({
+        ...createDto,
+        departure: arrival,
+        arrival: departure,
+      } as unknown as CreateFlightDto);
+
+      await expect(result).rejects.toThrow(BadRequestException);
+      await expect(result).rejects.toThrow('Departure must be before arrival');
+      expect(manager.save).not.toHaveBeenCalled();
     });
 
     it('does not save when the airline does not exist', async () => {
@@ -261,15 +333,16 @@ describe('FlightsUpsertService', () => {
       expect(result.status).toBe(FlightStatus.Advanced);
     });
 
-    it('does not save an invalid schedule', async () => {
-      await expect(
-        service.updateSchedule(
-          scheduleDto(
-            new Date('2030-01-01T15:00:00Z'),
-            new Date('2030-01-01T11:00:00Z'),
-          ),
+    it('returns bad request and does not save an invalid schedule', async () => {
+      const result = service.updateSchedule(
+        scheduleDto(
+          new Date('2030-01-01T15:00:00Z'),
+          new Date('2030-01-01T11:00:00Z'),
         ),
-      ).rejects.toThrow('Departure must be before arrival');
+      );
+
+      await expect(result).rejects.toThrow(BadRequestException);
+      await expect(result).rejects.toThrow('Departure must be before arrival');
 
       expect(manager.save).not.toHaveBeenCalled();
     });

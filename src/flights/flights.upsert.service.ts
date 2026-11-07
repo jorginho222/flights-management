@@ -1,7 +1,13 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { Flight } from './entities/flight.entity';
 import { Airline } from '../airlines/entities/airline.entity';
+import { Airport } from '../airports/entities/airport.entity';
 import { CreateFlightDto } from './dto/create.flight.dto';
 import { AirplanesService } from '../airplanes/airplanes.service';
 import { FlightStatus } from './types/flight.status';
@@ -43,9 +49,6 @@ export class FlightsUpsertService {
         id: flightDto.id,
         code: new FlightCode(airline.code, lastCorrelative + 1),
         airline,
-        origin: flightDto.origin,
-        destination: flightDto.destination,
-        distance: flightDto.distance,
         airplane: airplaneSearch[0],
         departure: flightDto.departure,
         arrival: flightDto.arrival,
@@ -55,7 +58,16 @@ export class FlightsUpsertService {
         basePrice: flightDto.basePrice,
       });
 
-      flight.validate();
+      // The stored airports, not the request, give the route and its distance
+      const origin = await this.findAirport(manager, flightDto.origin.id);
+      const destination = await this.findAirport(
+        manager,
+        flightDto.destination.id,
+      );
+      this.applyFlightRules(() => {
+        flight.setRoute(origin, destination);
+        flight.validate();
+      });
       flight.setSeats();
 
       try {
@@ -75,7 +87,9 @@ export class FlightsUpsertService {
 
   async updateSchedule(flightDto: UpdateFlightScheduleDto) {
     return await this.updateLockedFlight(flightDto.id, (flight) => {
-      flight.setSchedule(flightDto.departure, flightDto.arrival);
+      this.applyFlightRules(() =>
+        flight.setSchedule(flightDto.departure, flightDto.arrival),
+      );
     });
   }
 
@@ -83,6 +97,26 @@ export class FlightsUpsertService {
     return await this.updateLockedFlight(flightDto.id, (flight) => {
       flight.setStatus(flightDto.status as FlightStatus);
     });
+  }
+
+  // Flight throws plain Errors for invalid routes and schedules, which are
+  // client mistakes, so they surface as 400 instead of 500
+  private applyFlightRules(change: () => void): void {
+    try {
+      change();
+    } catch (error) {
+      throw new BadRequestException((error as Error).message);
+    }
+  }
+
+  private async findAirport(
+    manager: EntityManager,
+    id: string,
+  ): Promise<Airport> {
+    const airport = await manager.findOne(Airport, { where: { id } });
+    if (!airport) throw new NotFoundException(`Airport ${id} not found`);
+
+    return airport;
   }
 
   private async getLastCodeCorrelative(

@@ -43,7 +43,7 @@ describe('FlightsSearchService', () => {
 
       expect(find).toHaveBeenCalledWith({
         where: {},
-        relations: { airline: true },
+        relations: { airline: true, origin: true, destination: true },
         order: { departure: 'ASC', id: 'ASC' },
         skip: 0,
         take: 20,
@@ -52,15 +52,15 @@ describe('FlightsSearchService', () => {
 
     it('filters by every provided field', async () => {
       await service.searchFlights({
-        origin: 'New York',
-        destination: 'London',
+        origin: 'JFK',
+        destination: 'LHR',
         status: FlightStatus.Scheduled,
         airlineCode: 'AC',
       });
 
       expect(lastWhere()).toEqual({
-        origin: 'New York',
-        destination: 'London',
+        origin: { iataCode: 'JFK' },
+        destination: { iataCode: 'LHR' },
         status: FlightStatus.Scheduled,
         airline: { code: 'AC' },
       });
@@ -104,10 +104,14 @@ describe('FlightsSearchService', () => {
       expect(lastFindOptions()).toMatchObject({ skip: 20, take: 10 });
     });
 
-    it('never loads passengers or orders', async () => {
-      await service.searchFlights({ origin: 'New York' });
+    it('loads the airline and airports but never passengers or orders', async () => {
+      await service.searchFlights({ origin: 'JFK' });
 
-      expect(lastFindOptions().relations).toEqual({ airline: true });
+      expect(lastFindOptions().relations).toEqual({
+        airline: true,
+        origin: true,
+        destination: true,
+      });
     });
   });
 });

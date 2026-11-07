@@ -14,6 +14,7 @@ import { ConfigModule } from '@nestjs/config';
 import { OrderModule } from './orders/order.module';
 import { UserModule } from './users/user.module';
 import { AirlinesModule } from './airlines/airlines.module';
+import { AirportsModule } from './airports/airports.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { AirlinesModule } from './airlines/airlines.module';
     EventEmitterModule.forRoot(),
     MailerModule.forRoot(mailerConfig),
     AirlinesModule,
+    AirportsModule,
     FlightsModule,
     AirplanesModule,
     PassengersModule,

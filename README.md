@@ -53,6 +53,16 @@ npm ci
 npm run docker:npm -- ci
 ```
 
+### Loading airports
+
+Flights reference airports, so fill the `airport` table before creating flights:
+
+```bash
+npm run airports:import
+```
+
+It downloads the public-domain [OurAirports](https://ourairports.com/data/) data and keeps the large and medium airports that have an IATA code, about 4,500. It runs from the host against `DB_PORT=5433`, and saves all airports or none. It upserts by IATA code, so you can run it again to refresh the data without changing the ids that flights reference. Airports removed upstream are not deleted.
+
 Other helpers that run inside the container (it must be running):
 
 ```bash
@@ -66,15 +76,16 @@ npm run docker:logs                   # follow the API logs
 
 Settings come from `.env`, with optional overrides in `.env.local`. Copy `.env.example`, which documents each variable.
 
-| Variable                                                                            | Purpose                                                                                                                            |
-| ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `ENVIRONMENT`                                                                       | `development` uses TypeORM `synchronize` with no SSL. Any other value, or unset, turns SSL on and runs pending migrations at boot. |
-| `PORT`                                                                              | Port the API listens on (3000).                                                                                                    |
-| `CORS_ORIGINS`                                                                      | Comma-separated origins allowed to call the API. Defaults to `http://localhost:4200`, the frontend.                                |
-| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`                                 | Credentials for the Postgres container.                                                                                            |
-| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`                           | Database connection for commands run on the host (`DB_PORT=5433`). Compose sets these for the API container itself.                |
-| `AWS_S3_REGION`, `AWS_S3_BUCKET_NAME`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | S3 storage for airplane files. The region must not be blank or the API crashes at startup.                                         |
-| `APPLICATION_INSIGHTS_CONNECTION_STRING`                                            | Optional. Leave empty to disable Application Insights.                                                                             |
+| Variable                                                                            | Purpose                                                                                                                             |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `ENVIRONMENT`                                                                       | `development` uses TypeORM `synchronize` with no SSL. Any other value, or unset, turns SSL on and runs pending migrations at boot.  |
+| `PORT`                                                                              | Port the API listens on (3000).                                                                                                     |
+| `CORS_ORIGINS`                                                                      | Comma-separated origins allowed to call the API. Defaults to `http://localhost:4200`, the frontend.                                 |
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`                                 | Credentials for the Postgres container.                                                                                             |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`                           | Database connection for commands run on the host (`DB_PORT=5433`). Compose sets these for the API container itself.                 |
+| `AWS_S3_REGION`, `AWS_S3_BUCKET_NAME`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | S3 storage for airplane files. The region must not be blank or the API crashes at startup.                                          |
+| `OURAIRPORTS_BASE_URL`                                                              | Optional. Where `npm run airports:import` downloads the CSVs from. Defaults to `https://davidmegginson.github.io/ourairports-data`. |
+| `APPLICATION_INSIGHTS_CONNECTION_STRING`                                            | Optional. Leave empty to disable Application Insights.                                                                              |
 
 ## API overview
 
@@ -87,6 +98,7 @@ The full, interactive reference is the Swagger UI at `/docs`.
 | `POST`   | `/airlines`                  | Create or update an airline             |
 | `POST`   | `/airlines/import`           | Import airlines from an .xlsx file      |
 | `DELETE` | `/airlines/:id`              | Delete an airline                       |
+| `GET`    | `/airports`                  | Search airports                         |
 | `GET`    | `/airplanes`                 | List airplanes                          |
 | `POST`   | `/airplanes`                 | Create or update an airplane            |
 | `POST`   | `/airplanes/import`          | Import airplanes from an .xlsx file     |
@@ -104,15 +116,19 @@ The full, interactive reference is the Swagger UI at `/docs`.
 
 ### Searching flights with `QUERY`
 
-Flight search uses the HTTP `QUERY` method, which works like `GET` but takes a request body. There is no `GET /flights`. Send the filters as JSON. All are optional: `origin`, `destination`, `departureFrom`, `departureTo`, `status`, `airlineCode`, `page` and `limit` (20 by default).
+Flight search uses the HTTP `QUERY` method, which works like `GET` but takes a request body. There is no `GET /flights`. Send the filters as JSON. All are optional: `origin` and `destination` (airport IATA codes), `departureFrom`, `departureTo`, `status`, `airlineCode`, `page` and `limit` (20 by default).
 
 ```bash
 curl -X QUERY http://localhost:3000/flights \
   -H 'Content-Type: application/json' \
-  -d '{"origin": "Buenos Aires", "page": 1, "limit": 20}'
+  -d '{"origin": "EZE", "page": 1, "limit": 20}'
 ```
 
 The bundled Swagger UI can't display `QUERY` operations, so this endpoint is missing from `/docs`, though it is in `/docs-json`.
+
+### Airports
+
+`GET /airports` takes optional query parameters: `search` (matched against the IATA code, name and city), `countryCode`, `page` and `limit`. When you create a flight, `origin` and `destination` are airport objects as this endpoint returns them. Only their `id` is used to load the stored airport.
 
 ### Spreadsheet imports
 
@@ -128,6 +144,7 @@ The bundled Swagger UI can't display `QUERY` operations, so this endpoint is mis
 
 ### Flights and seats
 
+- A flight's origin and destination are airports. Its `distance` is not sent by the client. It is the great-circle distance between the two airports' coordinates, in statute miles, rounded to a whole mile.
 - When a flight is created, its seats are generated from the airplane's seat configuration (rows and columns per class) and stored as a JSON array on the flight.
 - Reserving a seat sets the passenger on that seat and adds the passenger to the flight. The flight row is locked during the reservation, so two passengers can't take the same seat.
 - Changing a flight's schedule marks it as delayed or advanced.
@@ -142,7 +159,7 @@ An order's grand total combines:
 
 - **Flights:** the flight's base price plus the airline's percentage increment for the chosen class, times the number of tickets.
 - **Luggage:** charged per flight using the airline's luggage rules.
-- **Miles redemption:** costs `distance × redeemed quantity` miles, plus the airline's redeem fee.
+- **Miles redemption:** costs `distance × redeemed quantity` miles (distance in statute miles), plus the airline's redeem fee.
 
 Money is stored as `numeric(12,2)` and rounded to 2 decimals.
 
@@ -182,6 +199,7 @@ Running the whole suite in parallel can use a lot of memory, so add `--maxWorker
 src/
   airlines/     airlines, luggage rules, price increments, xlsx import
   airplanes/    airplanes, seat configuration, xlsx import, S3 files
+  airports/     airports, OurAirports import command, distances
   flights/      flights, seats, codes, search and reservations
   orders/       orders and pricing
   passengers/   passengers and the event subscribers (emails, miles)
