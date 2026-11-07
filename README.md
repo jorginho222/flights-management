@@ -139,7 +139,7 @@ The bundled Swagger UI can't display `QUERY` operations, so this endpoint is mis
 
 ### Airports
 
-`GET /airports` takes optional query parameters: `search` (matched against the IATA code, name and city), `countryCode`, `page` and `limit`. When you create a flight, `origin` and `destination` are airport objects as this endpoint returns them. Only their `id` is used to load the stored airport.
+`GET /airports` is a typeahead lookup, not a paged list. It takes optional query parameters: `search` (at least 3 characters, matched against the IATA code, name and city, ignoring case), `countryCode` and `limit` (default 20, at most 50). Search results are ranked: an exact IATA code first, then codes, names and cities that start with the text, then the other matches, each group by name. Without `search` the airports are listed by IATA code. When you create a flight, `origin` and `destination` are airport objects as this endpoint returns them. Only their `id` is used to load the stored airport.
 
 ### Spreadsheet imports
 
