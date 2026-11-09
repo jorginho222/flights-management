@@ -106,7 +106,9 @@ Money columns use `moneyColumn` from `src/shared/common/money.ts` (`numeric(12,2
 
 **Spreadsheet imports share `SpreadsheetImporter`** (`src/shared/import/`). `POST /airlines/import` and `POST /airplanes/import` take an .xlsx in the `file` field, find columns by header, validate each row with the module's DTO and save all or nothing. A new import extends the base class (columns, `buildDto`, `toColumnName`, `findConflicts`, `save`) and uses the `@SpreadsheetUpload()` decorator. Sample files live in `data/`.
 
-**Cross-module side effects use `@nestjs/event-emitter`.** Event classes live in the emitting module's `events/` directory, and handlers live in `subscribers/` (currently all under `passengers/`). A subscriber only runs if it is listed in its module's `providers`.
+**Side effects use `@nestjs/event-emitter`.** Event classes live in the emitting module's `events/` directory, and handlers live in a `subscribers/` directory (under `passengers/` and `flights/`). A subscriber only runs if it is listed in its module's `providers`. `EventEmitterModule.forRoot()` is only in `AppModule`. Don't list `EventEmitter2` in a module's `providers`: that creates a private emitter that `@OnEvent` handlers never hear.
+
+**Live flight updates use SSE.** `GET /flights/events` (`@Sse()` in `FlightsController`) streams `flight.updated` events (`FlightUpdatedEvent`: id, status, departure, arrival, version). `FlightsUpsertService.updateStatus` and `updateSchedule` emit them after the transaction commits, and `FlightUpdatesStream` (`src/flights/subscribers/`) pushes them into an in-memory `Subject` with a 30-second `ping`. So only clients on the same process get them, and missed events are not replayed. `PUT /flights/:flightId`, reservations and orders don't emit yet.
 
 ## Work in progress
 

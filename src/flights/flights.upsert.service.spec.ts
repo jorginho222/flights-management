@@ -3,6 +3,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource, QueryFailedError } from 'typeorm';
 import { FlightsUpsertService } from './flights.upsert.service';
@@ -16,6 +17,10 @@ import { CreateFlightDto } from './dto/create.flight.dto';
 import { Airplane } from '../airplanes/entities/airplane.entity';
 import { FlightClasses } from './types/flight.classes';
 import { Airport } from '../airports/entities/airport.entity';
+import {
+  FLIGHT_UPDATED,
+  FlightUpdatedEvent,
+} from './events/flight.updated.event';
 
 const uniqueViolation = (constraint: string): QueryFailedError =>
   new QueryFailedError('query', [], {
@@ -37,6 +42,7 @@ describe('FlightsUpsertService', () => {
   let queryBuilder: Record<string, jest.Mock>;
   let transaction: jest.Mock;
   let airplaneSearch: jest.Mock;
+  let emit: jest.Mock;
   let flight: Flight;
 
   const flightId = 'flight-id';
@@ -56,7 +62,7 @@ describe('FlightsUpsertService', () => {
     }) as UpdateFlightScheduleDto;
 
   beforeEach(async () => {
-    flight = new Flight();
+    flight = Object.assign(new Flight(), { id: flightId, version: 3 });
     flight.status = FlightStatus.Scheduled;
     flight.departure = departure;
     flight.arrival = arrival;
@@ -79,12 +85,14 @@ describe('FlightsUpsertService', () => {
       work(manager),
     );
     airplaneSearch = jest.fn();
+    emit = jest.fn();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         FlightsUpsertService,
         { provide: AirplanesService, useValue: { search: airplaneSearch } },
         { provide: DataSource, useValue: { transaction } },
+        { provide: EventEmitter2, useValue: { emit } },
       ],
     }).compile();
 
@@ -306,6 +314,25 @@ describe('FlightsUpsertService', () => {
       );
     });
 
+    it('emits flight.updated with the saved flight after the transaction', async () => {
+      await service.updateStatus(statusDto);
+
+      expect(emit).toHaveBeenCalledTimes(1);
+      expect(emit).toHaveBeenCalledWith(
+        FLIGHT_UPDATED,
+        new FlightUpdatedEvent(
+          flightId,
+          FlightStatus.Delayed,
+          departure,
+          arrival,
+          3,
+        ),
+      );
+      expect(transaction.mock.invocationCallOrder[0]).toBeLessThan(
+        emit.mock.invocationCallOrder[0],
+      );
+    });
+
     it('does not save when the flight does not exist', async () => {
       manager.findOne.mockResolvedValue(null);
 
@@ -315,6 +342,7 @@ describe('FlightsUpsertService', () => {
       await expect(result).rejects.toThrow('Flight flight-id not found');
 
       expect(manager.save).not.toHaveBeenCalled();
+      expect(emit).not.toHaveBeenCalled();
     });
   });
 
@@ -344,6 +372,25 @@ describe('FlightsUpsertService', () => {
       expect(result.status).toBe(FlightStatus.Advanced);
     });
 
+    it('emits flight.updated with the new schedule and status', async () => {
+      const newDeparture = new Date('2030-01-01T11:00:00Z');
+      const newArrival = new Date('2030-01-01T13:00:00Z');
+
+      await service.updateSchedule(scheduleDto(newDeparture, newArrival));
+
+      expect(emit).toHaveBeenCalledTimes(1);
+      expect(emit).toHaveBeenCalledWith(
+        FLIGHT_UPDATED,
+        new FlightUpdatedEvent(
+          flightId,
+          FlightStatus.Delayed,
+          newDeparture,
+          newArrival,
+          3,
+        ),
+      );
+    });
+
     it('returns bad request and does not save an invalid schedule', async () => {
       const result = service.updateSchedule(
         scheduleDto(
@@ -356,6 +403,7 @@ describe('FlightsUpsertService', () => {
       await expect(result).rejects.toThrow('Departure must be before arrival');
 
       expect(manager.save).not.toHaveBeenCalled();
+      expect(emit).not.toHaveBeenCalled();
     });
 
     it('does not save when the flight does not exist', async () => {
@@ -367,6 +415,7 @@ describe('FlightsUpsertService', () => {
       await expect(result).rejects.toThrow('Flight flight-id not found');
 
       expect(manager.save).not.toHaveBeenCalled();
+      expect(emit).not.toHaveBeenCalled();
     });
   });
 });

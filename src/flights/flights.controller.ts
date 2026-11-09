@@ -3,14 +3,17 @@ import {
   Controller,
   Headers,
   HttpCode,
+  MessageEvent,
   Param,
   Patch,
   Post,
   Put,
   QueryMethod,
+  Sse,
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
-import { ApiOkResponse } from '@nestjs/swagger';
+import { ApiOkResponse, ApiOperation, ApiProduces } from '@nestjs/swagger';
+import { Observable } from 'rxjs';
 import { FlightsUpsertService } from './flights.upsert.service';
 import { Flight } from './entities/flight.entity';
 import { CreateFlightDto } from './dto/create.flight.dto';
@@ -24,6 +27,7 @@ import { PaginatedFlightsDto } from './dto/paginated.flights.dto';
 import { PaginatedResult } from '../shared/pagination/paginated.result';
 import { FlightsUpdateService } from './flights.update.service';
 import { UpdateFlightDto } from './dto/update.flight.dto';
+import { FlightUpdatesStream } from './subscribers/flight.updates.stream';
 
 @Controller('flights')
 export class FlightsController {
@@ -32,7 +36,20 @@ export class FlightsController {
     private readonly flightsSearchService: FlightsSearchService,
     private readonly flightsReserveService: FlightsReserveService,
     private readonly flightsUpdateService: FlightsUpdateService,
+    private readonly flightUpdatesStream: FlightUpdatesStream,
   ) {}
+
+  @Sse('events')
+  @ApiOperation({
+    summary: 'Live flight updates',
+    description:
+      'Server-Sent Events. Sends a `flight.updated` event with `id`, `status`, `departure`, `arrival` and `version` after a status or schedule change, and a `ping` every 30 seconds. Missed events are not replayed.',
+  })
+  @ApiProduces('text/event-stream')
+  @ApiOkResponse({ description: 'An open event stream' })
+  events(): Observable<MessageEvent> {
+    return this.flightUpdatesStream.updates();
+  }
 
   @QueryMethod()
   @ApiOkResponse({ type: PaginatedFlightsDto })

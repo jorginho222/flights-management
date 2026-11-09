@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DataSource } from 'typeorm';
 import { Flight } from './entities/flight.entity';
 import { CreateFlightDto } from './dto/create.flight.dto';
@@ -10,6 +11,10 @@ import { AirplanesService } from '../airplanes/airplanes.service';
 import { FlightStatus } from './types/flight.status';
 import { UpdateFlightScheduleDto } from './dto/update.flight.schedule.dto';
 import { UpdateFlightStatusDto } from './dto/update.flight.status.dto';
+import {
+  FLIGHT_UPDATED,
+  FlightUpdatedEvent,
+} from './events/flight.updated.event';
 import {
   findAirport,
   lockAirline,
@@ -22,6 +27,7 @@ export class FlightsUpsertService {
   constructor(
     private readonly airplaneService: AirplanesService,
     private readonly dataSource: DataSource,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async create(flightDto: CreateFlightDto): Promise<Flight> {
@@ -65,18 +71,30 @@ export class FlightsUpsertService {
     });
   }
 
-  async updateSchedule(flightDto: UpdateFlightScheduleDto) {
-    return await this.updateLockedFlight(flightDto.id, (flight) => {
+  async updateSchedule(flightDto: UpdateFlightScheduleDto): Promise<Flight> {
+    const flight = await this.updateLockedFlight(flightDto.id, (flight) => {
       this.applyFlightRules(() =>
         flight.setSchedule(flightDto.departure, flightDto.arrival),
       );
     });
+    this.emitFlightUpdated(flight);
+    return flight;
   }
 
-  async updateStatus(flightDto: UpdateFlightStatusDto) {
-    return await this.updateLockedFlight(flightDto.id, (flight) => {
+  async updateStatus(flightDto: UpdateFlightStatusDto): Promise<Flight> {
+    const flight = await this.updateLockedFlight(flightDto.id, (flight) => {
       flight.setStatus(flightDto.status as FlightStatus);
     });
+    this.emitFlightUpdated(flight);
+    return flight;
+  }
+
+  // Runs after the transaction commits, so a rollback never reaches clients
+  private emitFlightUpdated(flight: Flight): void {
+    this.eventEmitter.emit(
+      FLIGHT_UPDATED,
+      FlightUpdatedEvent.fromFlight(flight),
+    );
   }
 
   // Flight throws plain Errors for invalid routes and schedules, which are
