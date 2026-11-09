@@ -75,19 +75,22 @@ Because development relies on `synchronize`, a schema change on an entity works 
 - `npm test` matches every `src/**/*.spec.ts`, which includes the `*.e2e.spec.ts` files co-located with their modules.
 - `npm run test:e2e` only matches `test/*.e2e-spec.ts`, so it does not run those co-located specs.
 - Co-located e2e specs that need a database configure their own in-memory SQLite in `TypeOrmModule.forRoot`. `ormConfigTest.ts` is no longer used: `passengers.e2e.spec.ts` only imports it in commented-out code. `Flight` has relations to `Airline` and `Order`, so specs that load `Flight` must register those entities too.
-- SQLite can't run `FlightsUpsertService.create` or `FlightsReserveService`. Both lock rows with `pessimistic_write`, and `create` also uses a Postgres `::int` cast, so tests that really create a flight or reserve a seat need Postgres.
+- SQLite can't run `FlightsUpsertService.create`, `FlightsUpdateService`, `FlightsReserveService` or `OrderUpsertService.create`. They lock rows with `pessimistic_write`, and flight code generation also uses a Postgres `::int` cast, so tests that really run them need Postgres.
 
 ## Architecture
 
 **Domain logic sits on entities; services orchestrate.** Services load entities, call methods on them, and save. Examples are `Flight.reserveSeat` / `setSeats` and `Order.calculateTotal`. Put business rules on the entity.
 
-**Services are split by use case, not per module.** Flights has `FlightsUpsertService`, `FlightsSearchService` and `FlightsReserveService`. Orders follows the same pattern with `OrderUpsertService` and `OrderCancelService`.
+**Services are split by use case, not per module.** Flights has `FlightsUpsertService` (create, schedule, status), `FlightsUpdateService` (`PUT /flights/:flightId`), `FlightsSearchService` and `FlightsReserveService`. Orders follows the same pattern with `OrderUpsertService` and `OrderCancelService`.
 
 **Value objects are stored as JSON columns:**
 
-- `Flight.code` is unique through the `UQ_flight_code` index. `FlightsUpsertService.create` locks the airline row and takes the highest correlative for the prefix plus one, and a clash with the index returns 409 Conflict.
+- `Flight.code` is unique through the `UQ_flight_code` index. Creating a flight, or moving one to another airline, locks the airline row and takes the highest correlative for the prefix plus one (`lockAirline` / `nextFlightCode` / `saveWithFlightCode` in `src/flights/flights.lookups.ts`), and a clash with the index returns 409 Conflict. An airline code change leaves existing flight codes alone.
+- `Order.flightSelections` stores each order's purchase and redeem quantities per flight. `Order.soldSeatsByClass` sums them per class for the order-capacity check and for the airplane-change check.
 - `Flight.seats` is a JSON array of `AirplaneSeat`, generated from `Airplane.seatsConfig` by `Flight.setSeats()`. A reservation sets `passengerId` on a seat in that array and also adds to the `flight_passengers` relation, so the two must stay in sync.
 - `Airline.luggageRules` and `flightClassPriceIncrements` use custom transformers in `src/airlines/transformers/` to rebuild class instances. `Flight.code` does the same with `flightCodeTransformer` in `src/flights/transformers/`, which stores a plain object rather than a JSON string. Other JSON columns, such as `Flight.seats` and `Order.luggage`, come back from the database as plain objects with no methods.
+
+**Flight editing and locks.** `FlightsUpdateService.update` only edits `scheduled` flights. The rules are in `Flight.assertEditable`: with orders, route and airline are fixed; with reserved seats, only `basePrice` can change; and with orders plus an out-of-date `version` from the form, nothing changes. `Flight.version` is a `@VersionColumn`. `OrderUpsertService.create` doesn't save flights, so it bumps their version with `increment`. Every writer locks the flight row with `pessimistic_write`: reservations, edits, schedule and status changes, and order creation (which locks flights sorted by id). No transaction locks a flight after an airline, so the lock order is always flight → airline and they can't deadlock. Keep it that way, for example if airline code changes ever renumber flights.
 
 **Order pricing** (`Order.calculateTotal`) combines three parts into `grandTotal`:
 
@@ -112,10 +115,10 @@ These parts are incomplete, so check before assuming they work:
 - `order.paid` has a subscriber class but nothing emits it, and `AddMilesToUserOnOrderPaid` is not registered in `PassengersModule`.
 - `flight.cancelled` is emitted, but its mail subscriber is not registered in `PassengersModule` and its `@OnEvent` listens to `flight.reserved`.
 - `OrderCancelService.cancel` and `OrderUpsertService.update` are TODO stubs. `order.suspend.service.ts` is a copy of the cancel service, and `SuspendedOrder` is not registered in `ormConfig.ts`.
-- There are no concurrency tests yet. `src/flights/flights.concurrency.e2e.spec.ts` lists them as `it.todo`, waiting on a Postgres test database.
+- There are no concurrency tests yet. `src/flights/flights.concurrency.e2e.spec.ts` lists them as `it.todo` (flight creation, editing, reservations and order creation), waiting on a Postgres test database.
 - Cancelling a seat leaves the passenger in `flight_passengers`.
 - The airline transformers return JSON strings for `json` columns, so values are stored double-encoded as a JSON string and can't be queried with Postgres JSON operators.
-- Many services throw plain `Error` for not-found cases, which surfaces as HTTP 500 rather than 404.
+- An order in a class the airline has no price increment for throws a plain `Error` in `Order.calculateTotal`, which surfaces as HTTP 500.
 
 ## Deployment
 

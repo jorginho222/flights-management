@@ -107,6 +107,7 @@ The full, interactive reference is the Swagger UI at `/docs`.
 | `DELETE` | `/airplanes/:id`             | Delete an airplane                      |
 | `QUERY`  | `/flights`                   | Search flights, with a JSON body        |
 | `POST`   | `/flights`                   | Create a flight                         |
+| `PUT`    | `/flights/:flightId`         | Edit a scheduled flight                 |
 | `PUT`    | `/flights/:flightId/reserve` | Reserve a seat                          |
 | `PUT`    | `/flights/:flightId/cancel`  | Cancel a seat reservation               |
 | `PATCH`  | `/flights/schedule`          | Change a flight's departure and arrival |
@@ -124,7 +125,7 @@ curl -X QUERY http://localhost:3000/flights \
   -d '{"origin": "EZE", "page": 1, "limit": 20}'
 ```
 
-The response holds one page of flights in `items`, with their airline and airports, and the totals in `meta`:
+The response holds one page of flights in `items`, with their airline, airplane and airports, and the totals in `meta`:
 
 ```json
 {
@@ -150,7 +151,7 @@ The bundled Swagger UI can't display `QUERY` operations, so this endpoint is mis
 ### Architecture
 
 - **Business rules live on the entities**, and services orchestrate: they load entities, call methods on them and save. For example, `Flight.reserveSeat` and `Order.calculateTotal`.
-- **Services are split by use case** rather than one per module. Flights has `FlightsUpsertService`, `FlightsSearchService` and `FlightsReserveService`.
+- **Services are split by use case** rather than one per module. Flights has `FlightsUpsertService`, `FlightsUpdateService`, `FlightsSearchService` and `FlightsReserveService`.
 - **Side effects between modules use events.** For example, reserving a seat emits `flight.reserved`, and a subscriber in the passengers module emails the passenger.
 
 ### Flights and seats
@@ -160,9 +161,24 @@ The bundled Swagger UI can't display `QUERY` operations, so this endpoint is mis
 - Reserving a seat sets the passenger on that seat and adds the passenger to the flight. The flight row is locked during the reservation, so two passengers can't take the same seat.
 - Changing a flight's schedule marks it as delayed or advanced.
 
+### Editing a flight
+
+`PUT /flights/:flightId` replaces a flight's origin, destination, airline, airplane and base price. Departure and arrival change through `PATCH /flights/schedule`, and status through `PATCH /flights/status`. Only fields that differ from the stored values count as changes, so the form can send every field back.
+
+- Only a `scheduled` flight can be edited.
+- **Orders:** once a flight has orders, its origin, destination and airline can't change. The airplane can, if the new one has enough seats in each class for what the orders hold.
+- **Reserved seats:** once a seat is reserved, only the base price can change.
+- **Airplane change:** the seats are rebuilt from the new airplane's seat configuration.
+- **Airline change:** the flight gets a new code, the next number under the new airline's prefix.
+- **`version`:** the body carries the flight's `version` as the form loaded it. Every save of the flight bumps it, and so does every order on it. If the flight has orders and the version is out of date, the edit is rejected, so it can't overwrite a flight that sold seats the form didn't see.
+
+A broken rule returns `409 Conflict`, and a route with the same origin and destination returns `400`. The flight row is locked during the edit, and seat reservations and order creation lock it too, so the rules always see every committed order and reservation.
+
 ### Flight codes
 
-Each flight gets a unique code made of the airline's two-character code and a correlative number, for example `AL1`, `AL2`. When a flight is created, the airline row is locked and the next number is the highest existing one for that prefix plus one. A unique index on the code backs this up, and a clash returns `409 Conflict`.
+Each flight gets a unique code made of the airline's two-character code and a correlative number, for example `AL1`, `AL2`. When a flight is created, or moved to another airline, the airline row is locked and the next number is the highest existing one for that prefix plus one. A unique index on the code backs this up, and a clash returns `409 Conflict`.
+
+Changing an airline's own code doesn't change the codes of its existing flights. Only new flights and flights moved to that airline get the new prefix.
 
 ### Order pricing
 
@@ -173,6 +189,10 @@ An order's grand total combines:
 - **Miles redemption:** costs `distance × redeemed quantity` miles (distance in statute miles), plus the airline's redeem fee.
 
 Money is stored as `numeric(12,2)` and rounded to 2 decimals.
+
+### Order capacity
+
+An order stores how many seats it takes on each of its flights. When an order is created, each flight is locked, and the order is rejected with `409 Conflict` if its class doesn't have enough seats left once existing orders are counted. Orders of every status count, because there is no cancelled status yet.
 
 ## Database and migrations
 
@@ -202,7 +222,7 @@ Running the whole suite in parallel can use a lot of memory, so add `--maxWorker
 
 - **Unit specs** sit next to the code they test and mock repositories.
 - **Co-located e2e specs** (`*.e2e.spec.ts`) start the module with an in-memory SQLite database and call it with supertest. `npm test` runs them; `npm run test:e2e` only runs the specs in `test/`.
-- **Postgres-only behavior:** SQLite supports neither the row locks nor some of the Postgres SQL used when creating a flight or reserving a seat. The concurrency tests for these are listed as pending in `src/flights/flights.concurrency.e2e.spec.ts` until there is a Postgres test database.
+- **Postgres-only behavior:** SQLite supports neither the row locks nor some of the Postgres SQL used when creating or editing a flight, reserving a seat or creating an order. The concurrency tests for these are listed as pending in `src/flights/flights.concurrency.e2e.spec.ts` until there is a Postgres test database.
 
 ## Project structure
 
@@ -235,7 +255,7 @@ npm run format    # Prettier
 - Cancelling and updating orders are not implemented yet.
 - Some events are incomplete: nothing emits `order.paid`, and the miles and flight-cancelled subscribers are not registered.
 - Cancelling a seat leaves the passenger on the flight.
-- Many not-found errors return HTTP 500 instead of 404.
+- An order in a class the airline has no price increment for returns HTTP 500.
 - There are no concurrency tests against Postgres yet.
 
 ## Deployment

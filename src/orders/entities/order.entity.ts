@@ -15,6 +15,7 @@ import { CreateOrderDto } from '../dto/create.order.dto';
 import { OrderStatus } from '../types/order.status';
 import { BadRequestException } from '@nestjs/common';
 import { moneyColumn, roundMoney } from '../../shared/common/money';
+import { OrderFlightSelection } from '../valueObjects/order.flight.selection';
 
 @Entity()
 export class Order {
@@ -47,6 +48,10 @@ export class Order {
   @Column()
   passengersQuantity: number;
 
+  // Seats taken on each flight, which passengersQuantity sums across flights
+  @Column('json')
+  flightSelections: OrderFlightSelection[];
+
   @Column()
   exchangedMiles: number = 0;
 
@@ -61,6 +66,33 @@ export class Order {
 
   @Column(moneyColumn)
   grandTotal: number = 0;
+
+  // Seats sold on a flight per class, by every order regardless of status
+  // (there is no cancelled status yet)
+  static soldSeatsByClass(
+    orders: Order[],
+    flightId: string,
+  ): Map<FlightClasses, number> {
+    const sold = new Map<FlightClasses, number>();
+    for (const order of orders) {
+      const seats = order.seatsOn(flightId);
+      if (seats > 0) {
+        sold.set(order.class, (sold.get(order.class) ?? 0) + seats);
+      }
+    }
+
+    return sold;
+  }
+
+  seatsOn(flightId: string): number {
+    return this.flightSelections
+      .filter((selection) => selection.flightId === flightId)
+      .reduce(
+        (total, selection) =>
+          total + selection.purchaseQuantity + selection.redeemQuantity,
+        0,
+      );
+  }
 
   public calculateTotal(orderDto: CreateOrderDto): void {
     const flightSelectionDtoArray = orderDto.flightSelection;

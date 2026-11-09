@@ -10,6 +10,7 @@ import { AirplanesModule } from '../airplanes/airplanes.module';
 import { EventEmitter2, EventEmitterModule } from '@nestjs/event-emitter';
 import { Airline } from '../airlines/entities/airline.entity';
 import { Airport } from '../airports/entities/airport.entity';
+import { FlightsUpdateService } from './flights.update.service';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { Airport } from '../airports/entities/airport.entity';
   controllers: [FlightsController],
   providers: [
     FlightsUpsertService,
+    FlightsUpdateService,
     FlightsSearchService,
     FlightsReserveService,
     EventEmitter2,

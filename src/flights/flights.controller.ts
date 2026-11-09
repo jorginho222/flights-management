@@ -22,6 +22,8 @@ import { FlightsReserveService } from './flights.reserve.service';
 import { SearchFlightsDto } from './dto/search.flights.dto';
 import { PaginatedFlightsDto } from './dto/paginated.flights.dto';
 import { PaginatedResult } from '../shared/pagination/paginated.result';
+import { FlightsUpdateService } from './flights.update.service';
+import { UpdateFlightDto } from './dto/update.flight.dto';
 
 @Controller('flights')
 export class FlightsController {
@@ -29,6 +31,7 @@ export class FlightsController {
     private readonly flightsUpsertService: FlightsUpsertService,
     private readonly flightsSearchService: FlightsSearchService,
     private readonly flightsReserveService: FlightsReserveService,
+    private readonly flightsUpdateService: FlightsUpdateService,
   ) {}
 
   @QueryMethod()
@@ -73,6 +76,15 @@ export class FlightsController {
       seat,
       flightId,
     );
+  }
+
+  @Put('/:flightId')
+  @HttpCode(200)
+  async update(
+    @Param('flightId') flightId: string,
+    @Body() flightDto: UpdateFlightDto,
+  ): Promise<Flight> {
+    return await this.flightsUpdateService.update(flightId, flightDto);
   }
 
   @Patch('/schedule')

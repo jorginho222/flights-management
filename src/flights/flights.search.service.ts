@@ -31,7 +31,13 @@ export class FlightsSearchService {
     // Every loaded relation is many-to-one, so the count and skip/take are exact
     const [flights, totalItems] = await this.flightRepository.findAndCount({
       where: this.buildSearchWhere(searchDto),
-      relations: { airline: true, origin: true, destination: true },
+      // The airplane lets the admin panel's edit form show the current one
+      relations: {
+        airline: true,
+        airplane: true,
+        origin: true,
+        destination: true,
+      },
       order: { departure: 'ASC', id: 'ASC' },
       skip: (page - 1) * limit,
       take: limit,

@@ -4,6 +4,7 @@ import * as request from 'supertest';
 import { App } from 'supertest/types';
 import { FlightsController } from './flights.controller';
 import { FlightsReserveService } from './flights.reserve.service';
+import { FlightsUpdateService } from './flights.update.service';
 import { FlightsSearchService } from './flights.search.service';
 import { FlightsUpsertService } from './flights.upsert.service';
 import { SearchFlightsDto } from './dto/search.flights.dto';
@@ -24,6 +25,7 @@ describe('QUERY /flights', () => {
         { provide: FlightsSearchService, useValue: { searchFlights } },
         { provide: FlightsUpsertService, useValue: {} },
         { provide: FlightsReserveService, useValue: {} },
+        { provide: FlightsUpdateService, useValue: {} },
       ],
     }).compile();
 

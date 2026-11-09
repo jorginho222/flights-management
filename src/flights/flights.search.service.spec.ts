@@ -47,7 +47,12 @@ describe('FlightsSearchService', () => {
 
       expect(findAndCount).toHaveBeenCalledWith({
         where: {},
-        relations: { airline: true, origin: true, destination: true },
+        relations: {
+          airline: true,
+          airplane: true,
+          origin: true,
+          destination: true,
+        },
         order: { departure: 'ASC', id: 'ASC' },
         skip: 0,
         take: 20,
@@ -137,11 +142,12 @@ describe('FlightsSearchService', () => {
       expect(lastFindOptions()).toMatchObject({ skip: 20, take: 10 });
     });
 
-    it('loads the airline and airports but never passengers or orders', async () => {
+    it('loads the airline, airplane and airports but never passengers or orders', async () => {
       await service.searchFlights({ origin: 'JFK' });
 
       expect(lastFindOptions().relations).toEqual({
         airline: true,
+        airplane: true,
         origin: true,
         destination: true,
       });

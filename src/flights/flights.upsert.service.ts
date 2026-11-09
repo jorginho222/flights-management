@@ -1,20 +1,21 @@
 import {
   BadRequestException,
-  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource } from 'typeorm';
 import { Flight } from './entities/flight.entity';
-import { Airline } from '../airlines/entities/airline.entity';
-import { Airport } from '../airports/entities/airport.entity';
 import { CreateFlightDto } from './dto/create.flight.dto';
 import { AirplanesService } from '../airplanes/airplanes.service';
 import { FlightStatus } from './types/flight.status';
-import { FlightCode } from './valueObjects/flight.code';
 import { UpdateFlightScheduleDto } from './dto/update.flight.schedule.dto';
 import { UpdateFlightStatusDto } from './dto/update.flight.status.dto';
-import { isUniqueViolation } from '../shared/common/database.errors';
+import {
+  findAirport,
+  lockAirline,
+  nextFlightCode,
+  saveWithFlightCode,
+} from './flights.lookups';
 
 @Injectable()
 export class FlightsUpsertService {
@@ -36,26 +37,11 @@ export class FlightsUpsertService {
     }
 
     return await this.dataSource.transaction(async (manager) => {
-      // Locking the airline makes concurrent creations for the same airline
-      // wait here, so two flights can't read the same last correlative.
-      const airline = await manager.findOne(Airline, {
-        where: { id: flightDto.airline.id },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (!airline) {
-        throw new NotFoundException(
-          `Airline ${flightDto.airline.id} not found`,
-        );
-      }
-
-      const lastCorrelative = await this.getLastCodeCorrelative(
-        manager,
-        airline.code,
-      );
+      const airline = await lockAirline(manager, flightDto.airline.id);
 
       const flight = manager.create(Flight, {
         id: flightDto.id,
-        code: new FlightCode(airline.code, lastCorrelative + 1),
+        code: await nextFlightCode(manager, airline),
         airline,
         airplane: airplaneSearch[0],
         departure: flightDto.departure,
@@ -67,29 +53,15 @@ export class FlightsUpsertService {
       });
 
       // The stored airports, not the request, give the route and its distance
-      const origin = await this.findAirport(manager, flightDto.origin.id);
-      const destination = await this.findAirport(
-        manager,
-        flightDto.destination.id,
-      );
+      const origin = await findAirport(manager, flightDto.origin.id);
+      const destination = await findAirport(manager, flightDto.destination.id);
       this.applyFlightRules(() => {
         flight.setRoute(origin, destination);
         flight.validate();
       });
       flight.setSeats();
 
-      try {
-        return await manager.save(flight);
-      } catch (error) {
-        // The airline lock makes this rare, but a flight under another
-        // airline can hold the same prefix, e.g. after an airline code change.
-        if (isUniqueViolation(error, 'UQ_flight_code')) {
-          throw new ConflictException(
-            `Flight code ${flight.code.toString()} is already taken`,
-          );
-        }
-        throw error;
-      }
+      return await saveWithFlightCode(manager, flight);
     });
   }
 
@@ -115,29 +87,6 @@ export class FlightsUpsertService {
     } catch (error) {
       throw new BadRequestException((error as Error).message);
     }
-  }
-
-  private async findAirport(
-    manager: EntityManager,
-    id: string,
-  ): Promise<Airport> {
-    const airport = await manager.findOne(Airport, { where: { id } });
-    if (!airport) throw new NotFoundException(`Airport ${id} not found`);
-
-    return airport;
-  }
-
-  private async getLastCodeCorrelative(
-    manager: EntityManager,
-    prefix: string,
-  ): Promise<number> {
-    const result = await manager
-      .createQueryBuilder(Flight, 'flight')
-      .select("MAX((flight.code ->> 'correlative')::int)", 'last')
-      .where("flight.code ->> 'prefix' = :prefix", { prefix })
-      .getRawOne<{ last: number | null }>();
-
-    return Number(result?.last ?? 0);
   }
 
   private async updateLockedFlight(
