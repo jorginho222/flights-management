@@ -29,7 +29,11 @@ export class FlightsUpsertService {
         id: flightDto.airplane.id,
       },
     });
-    if (airplaneSearch.length === 0) throw new Error('Airplane not found');
+    if (airplaneSearch.length === 0) {
+      throw new NotFoundException(
+        `Airplane ${flightDto.airplane.id} not found`,
+      );
+    }
 
     return await this.dataSource.transaction(async (manager) => {
       // Locking the airline makes concurrent creations for the same airline
@@ -38,7 +42,11 @@ export class FlightsUpsertService {
         where: { id: flightDto.airline.id },
         lock: { mode: 'pessimistic_write' },
       });
-      if (!airline) throw new Error('Airline not found');
+      if (!airline) {
+        throw new NotFoundException(
+          `Airline ${flightDto.airline.id} not found`,
+        );
+      }
 
       const lastCorrelative = await this.getLastCodeCorrelative(
         manager,
@@ -141,7 +149,7 @@ export class FlightsUpsertService {
         where: { id: flightId },
         lock: { mode: 'pessimistic_write' },
       });
-      if (!flight) throw new Error('Flight not found');
+      if (!flight) throw new NotFoundException(`Flight ${flightId} not found`);
 
       applyChange(flight);
 

@@ -245,14 +245,24 @@ describe('FlightsUpsertService', () => {
       expect(manager.save).not.toHaveBeenCalled();
     });
 
-    it('does not save when the airline does not exist', async () => {
+    it('returns not found and does not save when the airline does not exist', async () => {
       manager.findOne.mockResolvedValue(null);
 
-      await expect(service.create(createDto)).rejects.toThrow(
-        'Airline not found',
-      );
+      const result = service.create(createDto);
 
+      await expect(result).rejects.toThrow(NotFoundException);
+      await expect(result).rejects.toThrow('Airline airline-id not found');
       expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it('returns not found and does not open a transaction when the airplane does not exist', async () => {
+      airplaneSearch.mockResolvedValue([]);
+
+      const result = service.create(createDto);
+
+      await expect(result).rejects.toThrow(NotFoundException);
+      await expect(result).rejects.toThrow('Airplane airplane-id not found');
+      expect(transaction).not.toHaveBeenCalled();
     });
 
     it('returns a conflict when the flight code is already taken', async () => {
@@ -299,9 +309,10 @@ describe('FlightsUpsertService', () => {
     it('does not save when the flight does not exist', async () => {
       manager.findOne.mockResolvedValue(null);
 
-      await expect(service.updateStatus(statusDto)).rejects.toThrow(
-        'Flight not found',
-      );
+      const result = service.updateStatus(statusDto);
+
+      await expect(result).rejects.toThrow(NotFoundException);
+      await expect(result).rejects.toThrow('Flight flight-id not found');
 
       expect(manager.save).not.toHaveBeenCalled();
     });
@@ -350,9 +361,10 @@ describe('FlightsUpsertService', () => {
     it('does not save when the flight does not exist', async () => {
       manager.findOne.mockResolvedValue(null);
 
-      await expect(
-        service.updateSchedule(scheduleDto(departure, arrival)),
-      ).rejects.toThrow('Flight not found');
+      const result = service.updateSchedule(scheduleDto(departure, arrival));
+
+      await expect(result).rejects.toThrow(NotFoundException);
+      await expect(result).rejects.toThrow('Flight flight-id not found');
 
       expect(manager.save).not.toHaveBeenCalled();
     });
