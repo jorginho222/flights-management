@@ -6,6 +6,7 @@ import {
   ManyToMany,
   ManyToOne,
   PrimaryGeneratedColumn,
+  VersionColumn,
 } from 'typeorm';
 import { Airplane } from '../../airplanes/entities/airplane.entity';
 import { Passenger } from '../../passengers/entities/passenger.entity';
@@ -18,6 +19,8 @@ import { Airline } from '../../airlines/entities/airline.entity';
 import { Order } from '../../orders/entities/order.entity';
 import { moneyColumn } from '../../shared/common/money';
 import { Airport } from '../../airports/entities/airport.entity';
+import { FlightClasses } from '../types/flight.classes';
+import { FlightEditChanges } from '../types/flight.edit.changes';
 
 @Entity()
 // Unique on the code's prefix and correlative. TypeORM can't declare an index
@@ -29,7 +32,7 @@ export class Flight {
   readonly id: string;
 
   @Column('json', { transformer: flightCodeTransformer })
-  readonly code: FlightCode;
+  code: FlightCode;
 
   @ManyToOne(() => Airport, { nullable: false })
   origin: Airport;
@@ -81,6 +84,12 @@ export class Flight {
   @Column({ default: false })
   isFullyReserved: boolean;
 
+  // Bumped by every save of the flight, and by order creation, which doesn't
+  // save it. The edit form sends the version it loaded, to tell whether
+  // orders arrived meanwhile.
+  @VersionColumn({ default: 1 })
+  version: number;
+
   setStatus(status: FlightStatus) {
     this.status = status;
   }
@@ -129,8 +138,95 @@ export class Flight {
     }
   }
 
+  // Only a scheduled flight can be edited, and what is already sold or
+  // reserved on it limits which fields can change. A loaded version that is
+  // out of date means orders or reservations may have arrived unseen, so
+  // with orders nothing changes.
+  assertEditable(
+    changes: FlightEditChanges,
+    hasOrders: boolean,
+    loadedVersion: number,
+  ): void {
+    if (this.status !== FlightStatus.Scheduled) {
+      throw new Error(
+        `Flight ${this.code.toString()} can only be edited while scheduled, and it is ${this.status}`,
+      );
+    }
+    if (hasOrders && loadedVersion !== this.version) {
+      throw new Error(
+        `Flight ${this.code.toString()} changed and has orders since it was loaded, reload it and try again`,
+      );
+    }
+    if (
+      this.hasReservedSeats() &&
+      (changes.route || changes.airline || changes.airplane)
+    ) {
+      throw new Error(
+        `Flight ${this.code.toString()} has reserved seats, so only its base price can change`,
+      );
+    }
+    if (hasOrders && (changes.route || changes.airline)) {
+      throw new Error(
+        `Flight ${this.code.toString()} has orders, so its origin, destination and airline cannot change`,
+      );
+    }
+  }
+
+  changeAirline(airline: Airline, code: FlightCode): void {
+    this.airline = airline;
+    this.code = code;
+  }
+
+  // Rebuilds the seats, so it must not run with reserved seats. The new
+  // airplane must still seat what orders sold in each class.
+  changeAirplane(
+    airplane: Airplane,
+    soldSeatsByClass: Map<FlightClasses, number>,
+  ): void {
+    if (this.hasReservedSeats()) {
+      throw new Error(
+        `Flight ${this.code.toString()} has reserved seats, so its airplane cannot change`,
+      );
+    }
+
+    const seats = Flight.buildSeats(airplane);
+    for (const [flightClass, sold] of soldSeatsByClass) {
+      const available = Flight.countClassSeats(seats, flightClass);
+      if (sold > available) {
+        throw new Error(
+          `Airplane ${airplane.model} has ${available} ${flightClass} seats, but orders hold ${sold}`,
+        );
+      }
+    }
+
+    this.airplane = airplane;
+    this.seats = seats;
+    this.isFullyReserved = false;
+  }
+
+  hasReservedSeats(): boolean {
+    return this.seats.some((seat) => Boolean(seat.passengerId));
+  }
+
+  seatsInClass(flightClass: FlightClasses): number {
+    return Flight.countClassSeats(this.seats, flightClass);
+  }
+
   setSeats() {
-    const seatsConfig = this.airplane.seatsConfig;
+    this.seats = Flight.buildSeats(this.airplane);
+  }
+
+  // AirplaneSeat.class is a plain string, filled from a FlightClasses value
+  private static countClassSeats(
+    seats: Array<AirplaneSeat>,
+    flightClass: FlightClasses,
+  ): number {
+    return seats.filter((seat) => seat.class === (flightClass as string))
+      .length;
+  }
+
+  private static buildSeats(airplane: Airplane): Array<AirplaneSeat> {
+    const seatsConfig = airplane.seatsConfig;
     const seats: Array<AirplaneSeat> = [];
     let globalRow = 0;
 
@@ -150,7 +246,7 @@ export class Flight {
       }
     });
 
-    this.seats = seats;
+    return seats;
   }
 
   reserveSeat(seat: AirplaneSeat, passenger: Passenger) {

@@ -4,14 +4,19 @@ import * as request from 'supertest';
 import { App } from 'supertest/types';
 import { FlightsController } from './flights.controller';
 import { FlightsReserveService } from './flights.reserve.service';
+import { FlightsUpdateService } from './flights.update.service';
 import { FlightsSearchService } from './flights.search.service';
 import { FlightsUpsertService } from './flights.upsert.service';
 import { SearchFlightsDto } from './dto/search.flights.dto';
 import { FlightStatus } from './types/flight.status';
+import { PaginatedResult } from '../shared/pagination/paginated.result';
 
 describe('QUERY /flights', () => {
   let app: INestApplication<App>;
-  const searchFlights = jest.fn<Promise<unknown[]>, [SearchFlightsDto]>();
+  const searchFlights = jest.fn<
+    Promise<PaginatedResult<unknown>>,
+    [SearchFlightsDto]
+  >();
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -20,6 +25,7 @@ describe('QUERY /flights', () => {
         { provide: FlightsSearchService, useValue: { searchFlights } },
         { provide: FlightsUpsertService, useValue: {} },
         { provide: FlightsReserveService, useValue: {} },
+        { provide: FlightsUpdateService, useValue: {} },
       ],
     }).compile();
 
@@ -30,7 +36,7 @@ describe('QUERY /flights', () => {
 
   beforeEach(() => {
     searchFlights.mockReset();
-    searchFlights.mockResolvedValue([]);
+    searchFlights.mockResolvedValue(PaginatedResult.of([], 0, 1, 20));
   });
 
   afterAll(async () => {
@@ -47,7 +53,9 @@ describe('QUERY /flights', () => {
     ).query('/flights');
 
   it('passes the transformed DTO to the service and returns 200', async () => {
-    searchFlights.mockResolvedValue([{ id: 'flight-1' }]);
+    searchFlights.mockResolvedValue(
+      PaginatedResult.of([{ id: 'flight-1' }], 6, 1, 5),
+    );
 
     const response = await query()
       .send({
@@ -58,7 +66,10 @@ describe('QUERY /flights', () => {
       })
       .expect(200);
 
-    expect(response.body).toEqual([{ id: 'flight-1' }]);
+    expect(response.body).toEqual({
+      items: [{ id: 'flight-1' }],
+      meta: { page: 1, limit: 5, totalItems: 6, totalPages: 2 },
+    });
     const dto = searchFlights.mock.calls[0][0];
     expect(dto).toBeInstanceOf(SearchFlightsDto);
     expect(dto.origin).toBe('JFK');

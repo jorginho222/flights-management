@@ -2,7 +2,6 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
   Between,
-  FindManyOptions,
   FindOperator,
   FindOptionsWhere,
   LessThanOrEqual,
@@ -11,6 +10,7 @@ import {
 } from 'typeorm';
 import { Flight } from './entities/flight.entity';
 import { SearchFlightsDto } from './dto/search.flights.dto';
+import { PaginatedResult } from '../shared/pagination/paginated.result';
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
@@ -22,21 +22,28 @@ export class FlightsSearchService {
     private readonly flightRepository: Repository<Flight>,
   ) {}
 
-  async search(criteria: FindManyOptions<Flight>) {
-    return await this.flightRepository.find(criteria);
-  }
-
-  async searchFlights(searchDto: SearchFlightsDto): Promise<Flight[]> {
+  async searchFlights(
+    searchDto: SearchFlightsDto,
+  ): Promise<PaginatedResult<Flight>> {
     const page = searchDto.page ?? DEFAULT_PAGE;
     const limit = searchDto.limit ?? DEFAULT_LIMIT;
 
-    return await this.search({
+    // Every loaded relation is many-to-one, so the count and skip/take are exact
+    const [flights, totalItems] = await this.flightRepository.findAndCount({
       where: this.buildSearchWhere(searchDto),
-      relations: { airline: true, origin: true, destination: true },
+      // The airplane lets the admin panel's edit form show the current one
+      relations: {
+        airline: true,
+        airplane: true,
+        origin: true,
+        destination: true,
+      },
       order: { departure: 'ASC', id: 'ASC' },
       skip: (page - 1) * limit,
       take: limit,
     });
+
+    return PaginatedResult.of(flights, totalItems, page, limit);
   }
 
   private buildSearchWhere(

@@ -27,4 +27,32 @@ describe('Flights concurrency (Postgres)', () => {
       'does not overwrite a seat reserved while the status or schedule is updated',
     );
   });
+
+  describe('FlightsUpdateService.update', () => {
+    it.todo(
+      'rejects an edit with the loaded version once an order commits while it waits for the flight lock',
+    );
+
+    it.todo(
+      'only accepts a base price change once a seat reservation commits while it waits for the flight lock',
+    );
+
+    it.todo(
+      'gives a flight moved to another airline a code that does not clash with a concurrent creation for that airline',
+    );
+  });
+
+  describe('OrderUpsertService.create', () => {
+    it.todo(
+      'lets only one of two concurrent orders take the last seats of a class',
+    );
+
+    it.todo(
+      'does not deadlock two concurrent orders that share flights in different order',
+    );
+
+    it.todo(
+      'checks capacity against the new airplane when an airplane change commits first',
+    );
+  });
 });

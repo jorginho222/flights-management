@@ -10,6 +10,7 @@ import {
   QueryMethod,
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
+import { ApiOkResponse } from '@nestjs/swagger';
 import { FlightsUpsertService } from './flights.upsert.service';
 import { Flight } from './entities/flight.entity';
 import { CreateFlightDto } from './dto/create.flight.dto';
@@ -19,6 +20,10 @@ import { UpdateFlightStatusDto } from './dto/update.flight.status.dto';
 import { AirplaneSeat } from './valueObjects/airplane.seat';
 import { FlightsReserveService } from './flights.reserve.service';
 import { SearchFlightsDto } from './dto/search.flights.dto';
+import { PaginatedFlightsDto } from './dto/paginated.flights.dto';
+import { PaginatedResult } from '../shared/pagination/paginated.result';
+import { FlightsUpdateService } from './flights.update.service';
+import { UpdateFlightDto } from './dto/update.flight.dto';
 
 @Controller('flights')
 export class FlightsController {
@@ -26,13 +31,15 @@ export class FlightsController {
     private readonly flightsUpsertService: FlightsUpsertService,
     private readonly flightsSearchService: FlightsSearchService,
     private readonly flightsReserveService: FlightsReserveService,
+    private readonly flightsUpdateService: FlightsUpdateService,
   ) {}
 
   @QueryMethod()
+  @ApiOkResponse({ type: PaginatedFlightsDto })
   async search(
     @Headers('content-type') contentType: string | undefined,
     @Body() searchDto: SearchFlightsDto,
-  ): Promise<Flight[]> {
+  ): Promise<PaginatedResult<Flight>> {
     // The JSON body parser skips other types, which would look like "no filters"
     const mediaType = contentType?.split(';')[0].trim().toLowerCase();
     if (mediaType !== 'application/json') {
@@ -69,6 +76,15 @@ export class FlightsController {
       seat,
       flightId,
     );
+  }
+
+  @Put('/:flightId')
+  @HttpCode(200)
+  async update(
+    @Param('flightId') flightId: string,
+    @Body() flightDto: UpdateFlightDto,
+  ): Promise<Flight> {
+    return await this.flightsUpdateService.update(flightId, flightDto);
   }
 
   @Patch('/schedule')
