@@ -6,7 +6,7 @@ import { AirplanesModule } from './airplanes/airplanes.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PassengersModule } from './passengers/passengers.module';
 import { ormConfigOptions } from '../ormConfig';
-import { EventEmitter2, EventEmitterModule } from '@nestjs/event-emitter';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { S3Module } from './shared/s3/s3.module';
 import mailerConfig from '../mailer.config';
@@ -35,6 +35,6 @@ import { AirportsModule } from './airports/airports.module';
     AirlinesModule,
   ],
   controllers: [AppController],
-  providers: [AppService, EventEmitter2],
+  providers: [AppService],
 })
 export class AppModule {}

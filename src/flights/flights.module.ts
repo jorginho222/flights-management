@@ -7,16 +7,15 @@ import { FlightsSearchService } from './flights.search.service';
 import { FlightsReserveService } from './flights.reserve.service';
 import { Passenger } from '../passengers/entities/passenger.entity';
 import { AirplanesModule } from '../airplanes/airplanes.module';
-import { EventEmitter2, EventEmitterModule } from '@nestjs/event-emitter';
 import { Airline } from '../airlines/entities/airline.entity';
 import { Airport } from '../airports/entities/airport.entity';
 import { FlightsUpdateService } from './flights.update.service';
+import { FlightUpdatesStream } from './subscribers/flight.updates.stream';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Flight, Passenger, Airline, Airport]),
     AirplanesModule,
-    EventEmitterModule.forRoot(),
   ],
   controllers: [FlightsController],
   providers: [
@@ -24,7 +23,7 @@ import { FlightsUpdateService } from './flights.update.service';
     FlightsUpdateService,
     FlightsSearchService,
     FlightsReserveService,
-    EventEmitter2,
+    FlightUpdatesStream,
   ],
 })
 export class FlightsModule {}

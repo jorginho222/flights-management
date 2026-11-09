@@ -91,29 +91,30 @@ Settings come from `.env`, with optional overrides in `.env.local`. Copy `.env.e
 
 The full, interactive reference is the Swagger UI at `/docs`.
 
-| Method   | Path                         | Description                             |
-| -------- | ---------------------------- | --------------------------------------- |
-| `GET`    | `/airlines`                  | List airlines                           |
-| `GET`    | `/airlines/:id`              | Get one airline                         |
-| `POST`   | `/airlines`                  | Create or update an airline             |
-| `POST`   | `/airlines/import`           | Import airlines from an .xlsx file      |
-| `DELETE` | `/airlines/:id`              | Delete an airline                       |
-| `GET`    | `/airports`                  | Search airports                         |
-| `GET`    | `/airplanes`                 | List airplanes                          |
-| `POST`   | `/airplanes`                 | Create or update an airplane            |
-| `POST`   | `/airplanes/import`          | Import airplanes from an .xlsx file     |
-| `PUT`    | `/airplanes/:id/upload-file` | Upload a file for an airplane to S3     |
-| `PUT`    | `/airplanes/:id/delete-file` | Delete an airplane's file               |
-| `DELETE` | `/airplanes/:id`             | Delete an airplane                      |
-| `QUERY`  | `/flights`                   | Search flights, with a JSON body        |
-| `POST`   | `/flights`                   | Create a flight                         |
-| `PUT`    | `/flights/:flightId`         | Edit a scheduled flight                 |
-| `PUT`    | `/flights/:flightId/reserve` | Reserve a seat                          |
-| `PUT`    | `/flights/:flightId/cancel`  | Cancel a seat reservation               |
-| `PATCH`  | `/flights/schedule`          | Change a flight's departure and arrival |
-| `PATCH`  | `/flights/status`            | Change a flight's status                |
-| `POST`   | `/passengers`                | Create a passenger                      |
-| `POST`   | `/orders`                    | Create an order                         |
+| Method   | Path                         | Description                              |
+| -------- | ---------------------------- | ---------------------------------------- |
+| `GET`    | `/airlines`                  | List airlines                            |
+| `GET`    | `/airlines/:id`              | Get one airline                          |
+| `POST`   | `/airlines`                  | Create or update an airline              |
+| `POST`   | `/airlines/import`           | Import airlines from an .xlsx file       |
+| `DELETE` | `/airlines/:id`              | Delete an airline                        |
+| `GET`    | `/airports`                  | Search airports                          |
+| `GET`    | `/airplanes`                 | List airplanes                           |
+| `POST`   | `/airplanes`                 | Create or update an airplane             |
+| `POST`   | `/airplanes/import`          | Import airplanes from an .xlsx file      |
+| `PUT`    | `/airplanes/:id/upload-file` | Upload a file for an airplane to S3      |
+| `PUT`    | `/airplanes/:id/delete-file` | Delete an airplane's file                |
+| `DELETE` | `/airplanes/:id`             | Delete an airplane                       |
+| `QUERY`  | `/flights`                   | Search flights, with a JSON body         |
+| `GET`    | `/flights/events`            | Live flight updates (Server-Sent Events) |
+| `POST`   | `/flights`                   | Create a flight                          |
+| `PUT`    | `/flights/:flightId`         | Edit a scheduled flight                  |
+| `PUT`    | `/flights/:flightId/reserve` | Reserve a seat                           |
+| `PUT`    | `/flights/:flightId/cancel`  | Cancel a seat reservation                |
+| `PATCH`  | `/flights/schedule`          | Change a flight's departure and arrival  |
+| `PATCH`  | `/flights/status`            | Change a flight's status                 |
+| `POST`   | `/passengers`                | Create a passenger                       |
+| `POST`   | `/orders`                    | Create an order                          |
 
 ### Searching flights with `QUERY`
 
@@ -138,6 +139,19 @@ A page past the end returns an empty `items` list with the real totals.
 
 The bundled Swagger UI can't display `QUERY` operations, so this endpoint is missing from `/docs`, though it is in `/docs-json`.
 
+### Live flight updates
+
+`GET /flights/events` is a [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events) stream, so a browser can listen with `EventSource`. After a flight's status or schedule changes through `PATCH /flights/status` or `PATCH /flights/schedule`, it sends a `flight.updated` event with the fields a flight list shows:
+
+```text
+event: flight.updated
+data: {"id":"…","status":"delayed","departure":"2026-11-10T12:30:00.000Z","arrival":"2026-11-10T17:30:00.000Z","version":6}
+```
+
+Use `version` to ignore an update older than the data you already have. The stream also sends a `ping` event every 30 seconds to keep the connection open. Try it with `curl -N http://localhost:3000/flights/events`.
+
+Events are sent only after the change is committed. They are not stored, so a client that was disconnected misses them and should reload its data when it reconnects. The stream is kept in memory, so it only reaches clients connected to the same API process. Running more than one instance would need a shared channel such as Postgres `LISTEN/NOTIFY` or Redis. Other changes, such as `PUT /flights/:flightId`, reservations and orders, don't send events yet.
+
 ### Airports
 
 `GET /airports` is a typeahead lookup, not a paged list. It takes optional query parameters: `search` (at least 3 characters, matched against the IATA code, name and city, ignoring case), `countryCode` and `limit` (default 20, at most 50). Search results are ranked: an exact IATA code first, then codes, names and cities that start with the text, then the other matches, each group by name. Without `search` the airports are listed by IATA code. When you create a flight, `origin` and `destination` are airport objects as this endpoint returns them. Only their `id` is used to load the stored airport.
@@ -152,7 +166,7 @@ The bundled Swagger UI can't display `QUERY` operations, so this endpoint is mis
 
 - **Business rules live on the entities**, and services orchestrate: they load entities, call methods on them and save. For example, `Flight.reserveSeat` and `Order.calculateTotal`.
 - **Services are split by use case** rather than one per module. Flights has `FlightsUpsertService`, `FlightsUpdateService`, `FlightsSearchService` and `FlightsReserveService`.
-- **Side effects between modules use events.** For example, reserving a seat emits `flight.reserved`, and a subscriber in the passengers module emails the passenger.
+- **Side effects use events.** For example, reserving a seat emits `flight.reserved`, and a subscriber in the passengers module emails the passenger. A status or schedule change emits `flight.updated`, which a subscriber in the flights module sends to the live updates stream.
 
 ### Flights and seats
 

@@ -7,6 +7,7 @@ import { FlightsReserveService } from './flights.reserve.service';
 import { FlightsUpdateService } from './flights.update.service';
 import { FlightsSearchService } from './flights.search.service';
 import { FlightsUpsertService } from './flights.upsert.service';
+import { FlightUpdatesStream } from './subscribers/flight.updates.stream';
 import { SearchFlightsDto } from './dto/search.flights.dto';
 import { FlightStatus } from './types/flight.status';
 import { PaginatedResult } from '../shared/pagination/paginated.result';
@@ -26,6 +27,7 @@ describe('QUERY /flights', () => {
         { provide: FlightsUpsertService, useValue: {} },
         { provide: FlightsReserveService, useValue: {} },
         { provide: FlightsUpdateService, useValue: {} },
+        { provide: FlightUpdatesStream, useValue: {} },
       ],
     }).compile();
 
