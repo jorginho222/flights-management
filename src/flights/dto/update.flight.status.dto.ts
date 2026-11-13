@@ -1,5 +1,6 @@
-import { IsNotEmpty, IsString, IsUUID } from 'class-validator';
+import { IsEnum, IsUUID } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { FlightStatus } from '../types/flight.status';
 
 export class UpdateFlightStatusDto {
   @ApiProperty({
@@ -10,10 +11,10 @@ export class UpdateFlightStatusDto {
   id: string;
 
   @ApiProperty({
-    example: 'scheduled',
+    enum: FlightStatus,
+    example: FlightStatus.Boarding,
     description: 'Nuevo estado del vuelo',
   })
-  @IsString()
-  @IsNotEmpty()
-  status: string;
+  @IsEnum(FlightStatus)
+  status: FlightStatus;
 }

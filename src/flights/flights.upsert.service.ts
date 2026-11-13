@@ -55,6 +55,7 @@ export class FlightsUpsertService {
         passengers: [],
         orders: [],
         status: FlightStatus.Scheduled,
+        wasRescheduled: false,
         basePrice: flightDto.basePrice,
       });
 
@@ -83,7 +84,7 @@ export class FlightsUpsertService {
 
   async updateStatus(flightDto: UpdateFlightStatusDto): Promise<Flight> {
     const flight = await this.updateLockedFlight(flightDto.id, (flight) => {
-      flight.setStatus(flightDto.status as FlightStatus);
+      flight.setStatus(flightDto.status);
     });
     this.emitFlightUpdated(flight);
     return flight;

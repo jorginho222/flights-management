@@ -5,7 +5,8 @@ export const FLIGHT_UPDATED = 'flight.updated';
 
 /**
  * A flight's status or schedule changed. It carries the fields a flight list
- * shows, and the version so clients can drop stale or repeated updates.
+ * shows, including whether it was rescheduled, and the version so clients can
+ * drop stale or repeated updates.
  */
 export class FlightUpdatedEvent {
   constructor(
@@ -13,6 +14,7 @@ export class FlightUpdatedEvent {
     public readonly status: FlightStatus,
     public readonly departure: Date,
     public readonly arrival: Date,
+    public readonly wasRescheduled: boolean,
     public readonly version: number,
   ) {}
 
@@ -22,6 +24,7 @@ export class FlightUpdatedEvent {
       flight.status,
       flight.departure,
       flight.arrival,
+      flight.wasRescheduled,
       flight.version,
     );
   }

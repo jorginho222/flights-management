@@ -51,7 +51,7 @@ describe('FlightsUpsertService', () => {
 
   const statusDto = {
     id: flightId,
-    status: FlightStatus.Delayed,
+    status: FlightStatus.Boarding,
   } as UpdateFlightStatusDto;
 
   const scheduleDto = (newDeparture: Date, newArrival: Date) =>
@@ -64,6 +64,7 @@ describe('FlightsUpsertService', () => {
   beforeEach(async () => {
     flight = Object.assign(new Flight(), { id: flightId, version: 3 });
     flight.status = FlightStatus.Scheduled;
+    flight.wasRescheduled = false;
     flight.departure = departure;
     flight.arrival = arrival;
 
@@ -296,7 +297,7 @@ describe('FlightsUpsertService', () => {
 
       expectFlightLockedAndSavedInTransaction();
       expect(result).toBe(flight);
-      expect(result.status).toBe(FlightStatus.Delayed);
+      expect(result.status).toBe(FlightStatus.Boarding);
     });
 
     it('applies the change to the flight read under the lock', async () => {
@@ -308,7 +309,7 @@ describe('FlightsUpsertService', () => {
 
       await service.updateStatus(statusDto);
 
-      expect(savedStatuses).toEqual([FlightStatus.Delayed]);
+      expect(savedStatuses).toEqual([FlightStatus.Boarding]);
       expect(manager.findOne.mock.invocationCallOrder[0]).toBeLessThan(
         manager.save.mock.invocationCallOrder[0],
       );
@@ -322,9 +323,10 @@ describe('FlightsUpsertService', () => {
         FLIGHT_UPDATED,
         new FlightUpdatedEvent(
           flightId,
-          FlightStatus.Delayed,
+          FlightStatus.Boarding,
           departure,
           arrival,
+          false,
           3,
         ),
       );
@@ -347,7 +349,7 @@ describe('FlightsUpsertService', () => {
   });
 
   describe('updateSchedule', () => {
-    it('locks the flight, then saves a later schedule as delayed', async () => {
+    it('locks the flight, then saves the new schedule as rescheduled', async () => {
       const newDeparture = new Date('2030-01-01T11:00:00Z');
       const newArrival = new Date('2030-01-01T13:00:00Z');
 
@@ -358,10 +360,10 @@ describe('FlightsUpsertService', () => {
       expectFlightLockedAndSavedInTransaction();
       expect(result.departure).toBe(newDeparture);
       expect(result.arrival).toBe(newArrival);
-      expect(result.status).toBe(FlightStatus.Delayed);
+      expect(result.wasRescheduled).toBe(true);
     });
 
-    it('saves an earlier schedule as advanced', async () => {
+    it('keeps the status, so the flight stays scheduled', async () => {
       const result = await service.updateSchedule(
         scheduleDto(
           new Date('2030-01-01T09:00:00Z'),
@@ -369,10 +371,10 @@ describe('FlightsUpsertService', () => {
         ),
       );
 
-      expect(result.status).toBe(FlightStatus.Advanced);
+      expect(result.status).toBe(FlightStatus.Scheduled);
     });
 
-    it('emits flight.updated with the new schedule and status', async () => {
+    it('emits flight.updated with the new schedule and the rescheduled flag', async () => {
       const newDeparture = new Date('2030-01-01T11:00:00Z');
       const newArrival = new Date('2030-01-01T13:00:00Z');
 
@@ -383,9 +385,10 @@ describe('FlightsUpsertService', () => {
         FLIGHT_UPDATED,
         new FlightUpdatedEvent(
           flightId,
-          FlightStatus.Delayed,
+          FlightStatus.Scheduled,
           newDeparture,
           newArrival,
+          true,
           3,
         ),
       );

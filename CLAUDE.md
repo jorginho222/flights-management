@@ -108,7 +108,9 @@ Money columns use `moneyColumn` from `src/shared/common/money.ts` (`numeric(12,2
 
 **Side effects use `@nestjs/event-emitter`.** Event classes live in the emitting module's `events/` directory, and handlers live in a `subscribers/` directory (under `passengers/` and `flights/`). A subscriber only runs if it is listed in its module's `providers`. `EventEmitterModule.forRoot()` is only in `AppModule`. Don't list `EventEmitter2` in a module's `providers`: that creates a private emitter that `@OnEvent` handlers never hear.
 
-**Live flight updates use SSE.** `GET /flights/events` (`@Sse()` in `FlightsController`) streams `flight.updated` events (`FlightUpdatedEvent`: id, status, departure, arrival, version). `FlightsUpsertService.updateStatus` and `updateSchedule` emit them after the transaction commits, and `FlightUpdatesStream` (`src/flights/subscribers/`) pushes them into an in-memory `Subject` with a 30-second `ping`. So only clients on the same process get them, and missed events are not replayed. `PUT /flights/:flightId`, reservations and orders don't emit yet.
+**Rescheduling is a flag, not a status.** `Flight.setSchedule` sets `wasRescheduled` when departure or arrival changes and leaves `status` alone, so a rescheduled flight stays `scheduled` and editable. `FlightStatus` has no `delayed`, `advanced` or `onTime`.
+
+**Live flight updates use SSE.** `GET /flights/events` (`@Sse()` in `FlightsController`) streams `flight.updated` events (`FlightUpdatedEvent`: id, status, departure, arrival, wasRescheduled, version). `FlightsUpsertService.updateStatus` and `updateSchedule` emit them after the transaction commits, and `FlightUpdatesStream` (`src/flights/subscribers/`) pushes them into an in-memory `Subject` with a 30-second `ping`. So only clients on the same process get them, and missed events are not replayed. `PUT /flights/:flightId`, reservations and orders don't emit yet.
 
 ## Work in progress
 
@@ -120,6 +122,7 @@ These parts are incomplete, so check before assuming they work:
 - There are no concurrency tests yet. `src/flights/flights.concurrency.e2e.spec.ts` lists them as `it.todo` (flight creation, editing, reservations and order creation), waiting on a Postgres test database.
 - Cancelling a seat leaves the passenger in `flight_passengers`.
 - The airline transformers return JSON strings for `json` columns, so values are stored double-encoded as a JSON string and can't be queried with Postgres JSON operators.
+- `wasRescheduled` records neither the direction (delayed or advanced) nor past schedules. A rescheduling history is planned to replace it.
 - An order in a class the airline has no price increment for throws a plain `Error` in `Order.calculateTotal`, which surfaces as HTTP 500.
 
 ## Deployment

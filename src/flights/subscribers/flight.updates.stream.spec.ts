@@ -14,9 +14,10 @@ describe('FlightUpdatesStream', () => {
 
   const event = new FlightUpdatedEvent(
     'flight-id',
-    FlightStatus.Delayed,
+    FlightStatus.Scheduled,
     new Date('2030-01-01T11:00:00Z'),
     new Date('2030-01-01T13:00:00Z'),
+    true,
     4,
   );
 

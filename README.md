@@ -145,7 +145,7 @@ The bundled Swagger UI can't display `QUERY` operations, so this endpoint is mis
 
 ```text
 event: flight.updated
-data: {"id":"…","status":"delayed","departure":"2026-11-10T12:30:00.000Z","arrival":"2026-11-10T17:30:00.000Z","version":6}
+data: {"id":"…","status":"scheduled","departure":"2026-11-10T12:30:00.000Z","arrival":"2026-11-10T17:30:00.000Z","wasRescheduled":true,"version":6}
 ```
 
 Use `version` to ignore an update older than the data you already have. The stream also sends a `ping` event every 30 seconds to keep the connection open. Try it with `curl -N http://localhost:3000/flights/events`.
@@ -173,7 +173,7 @@ Events are sent only after the change is committed. They are not stored, so a cl
 - A flight's origin and destination are airports. Its `distance` is not sent by the client. It is the great-circle distance between the two airports' coordinates, in statute miles, rounded to a whole mile.
 - When a flight is created, its seats are generated from the airplane's seat configuration (rows and columns per class) and stored as a JSON array on the flight.
 - Reserving a seat sets the passenger on that seat and adds the passenger to the flight. The flight row is locked during the reservation, so two passengers can't take the same seat.
-- Changing a flight's schedule marks it as delayed or advanced.
+- Changing a flight's departure or arrival sets `wasRescheduled` to `true`. The status stays as it was, so a `scheduled` flight can still be edited.
 
 ### Editing a flight
 
@@ -271,6 +271,7 @@ npm run format    # Prettier
 - Cancelling a seat leaves the passenger on the flight.
 - An order in a class the airline has no price increment for returns HTTP 500.
 - There are no concurrency tests against Postgres yet.
+- `wasRescheduled` doesn't say whether a flight was delayed or advanced, or keep earlier schedules. A rescheduling history is planned to replace it.
 
 ## Deployment
 
