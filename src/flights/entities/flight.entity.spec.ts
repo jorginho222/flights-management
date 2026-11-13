@@ -45,6 +45,66 @@ describe('Flight', () => {
     flight.seats[0].passengerId = 'passenger-id';
   };
 
+  describe('setSchedule', () => {
+    const departure = new Date('2030-01-01T10:00:00Z');
+    const arrival = new Date('2030-01-01T12:00:00Z');
+
+    beforeEach(() => {
+      flight.departure = departure;
+      flight.arrival = arrival;
+      flight.wasRescheduled = false;
+    });
+
+    it.each([
+      ['a later departure', '2030-01-01T11:00:00Z', '2030-01-01T13:00:00Z'],
+      ['an earlier departure', '2030-01-01T09:00:00Z', '2030-01-01T11:00:00Z'],
+      ['only a new arrival', '2030-01-01T10:00:00Z', '2030-01-01T12:30:00Z'],
+    ])(
+      'marks the flight rescheduled for %s',
+      (_case, newDeparture, newArrival) => {
+        flight.setSchedule(new Date(newDeparture), new Date(newArrival));
+
+        expect(flight.wasRescheduled).toBe(true);
+        expect(flight.departure).toEqual(new Date(newDeparture));
+        expect(flight.arrival).toEqual(new Date(newArrival));
+      },
+    );
+
+    it('does not mark the flight rescheduled when the times are the same', () => {
+      flight.setSchedule(new Date(departure), new Date(arrival));
+
+      expect(flight.wasRescheduled).toBe(false);
+    });
+
+    it('keeps an earlier reschedule when the times are the same', () => {
+      flight.wasRescheduled = true;
+
+      flight.setSchedule(new Date(departure), new Date(arrival));
+
+      expect(flight.wasRescheduled).toBe(true);
+    });
+
+    it('leaves the status unchanged', () => {
+      flight.setSchedule(
+        new Date('2030-01-01T11:00:00Z'),
+        new Date('2030-01-01T13:00:00Z'),
+      );
+
+      expect(flight.status).toBe(FlightStatus.Scheduled);
+    });
+
+    it('does not mark the flight rescheduled when the schedule is invalid', () => {
+      expect(() =>
+        flight.setSchedule(
+          new Date('2030-01-01T15:00:00Z'),
+          new Date('2030-01-01T11:00:00Z'),
+        ),
+      ).toThrow('Departure must be before arrival');
+
+      expect(flight.wasRescheduled).toBe(false);
+    });
+  });
+
   describe('assertEditable', () => {
     it('allows every change on a scheduled flight with no orders or reservations', () => {
       expect(() =>
@@ -57,7 +117,7 @@ describe('Flight', () => {
     });
 
     it.each([
-      FlightStatus.Delayed,
+      FlightStatus.GateChanged,
       FlightStatus.Cancelled,
       FlightStatus.Boarding,
     ])('rejects any edit while the flight is %s', (status) => {

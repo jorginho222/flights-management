@@ -332,7 +332,7 @@ describe('FlightsUpdateService', () => {
   });
 
   it('returns a conflict for a flight that is no longer scheduled', async () => {
-    flight.status = FlightStatus.Delayed;
+    flight.status = FlightStatus.Boarding;
 
     const result = service.update(flightId, { ...unchanged(), basePrice: 120 });
 

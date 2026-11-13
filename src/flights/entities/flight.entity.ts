@@ -84,6 +84,11 @@ export class Flight {
   @Column({ default: false })
   isFullyReserved: boolean;
 
+  // Set once departure or arrival changes through a schedule update. Whether
+  // that moved the flight earlier or later isn't kept yet.
+  @Column({ default: false })
+  wasRescheduled: boolean;
+
   // Bumped by every save of the flight, and by order creation, which doesn't
   // save it. The edit form sends the version it loaded, to tell whether
   // orders arrived meanwhile.
@@ -94,15 +99,20 @@ export class Flight {
     this.status = status;
   }
 
+  // Marks the flight rescheduled without touching its status, so a scheduled
+  // flight stays editable
   setSchedule(departure: Date, arrival: Date) {
-    const status =
-      departure < this.departure ? FlightStatus.Advanced : FlightStatus.Delayed;
+    const changed =
+      new Date(departure).getTime() !== new Date(this.departure).getTime() ||
+      new Date(arrival).getTime() !== new Date(this.arrival).getTime();
 
     this.setDeparture(departure);
     this.setArrival(arrival);
     this.validateSchedule();
 
-    this.setStatus(status);
+    if (changed) {
+      this.wasRescheduled = true;
+    }
   }
 
   setDeparture(departure: Date) {

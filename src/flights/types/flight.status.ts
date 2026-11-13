@@ -1,8 +1,5 @@
 export enum FlightStatus {
   Scheduled = 'scheduled',
-  OnTime = 'onTime',
-  Advanced = 'advanced',
-  Delayed = 'delayed',
   Cancelled = 'cancelled',
   Departed = 'departed',
   InAir = 'inAir',
