@@ -7,6 +7,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { PassengersModule } from './passengers/passengers.module';
 import { ormConfigOptions } from '../ormConfig';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ScheduleModule } from '@nestjs/schedule';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { S3Module } from './shared/s3/s3.module';
 import mailerConfig from '../mailer.config';
@@ -23,6 +24,7 @@ import { AirportsModule } from './airports/airports.module';
       envFilePath: ['.env.local', '.env'],
     }),
     EventEmitterModule.forRoot(),
+    ScheduleModule.forRoot(),
     MailerModule.forRoot(mailerConfig),
     AirlinesModule,
     AirportsModule,

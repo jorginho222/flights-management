@@ -105,6 +105,59 @@ describe('Flight', () => {
     });
   });
 
+  describe('refreshDelay', () => {
+    const departure = new Date('2030-01-01T10:00:00Z');
+    const at = (time: string): Date => new Date(`2030-01-01T${time}:00Z`);
+
+    beforeEach(() => {
+      flight.departure = departure;
+      flight.isDelayed = false;
+    });
+
+    it('marks a flight still on the ground past the tolerance delayed', () => {
+      expect(flight.refreshDelay(at('10:16'), 15)).toBe(true);
+      expect(flight.isDelayed).toBe(true);
+    });
+
+    it('does not mark it delayed within the tolerance', () => {
+      expect(flight.refreshDelay(at('10:15'), 15)).toBe(false);
+      expect(flight.isDelayed).toBe(false);
+    });
+
+    it('clears the delay once the departure is ahead again', () => {
+      flight.isDelayed = true;
+
+      expect(flight.refreshDelay(at('09:00'), 15)).toBe(true);
+      expect(flight.isDelayed).toBe(false);
+    });
+
+    it.each([FlightStatus.Boarding, FlightStatus.GateClosed])(
+      'checks a %s flight, which has not departed',
+      (status) => {
+        flight.status = status;
+
+        expect(flight.refreshDelay(at('11:00'), 15)).toBe(true);
+      },
+    );
+
+    it.each([
+      FlightStatus.Departed,
+      FlightStatus.InAir,
+      FlightStatus.Arrived,
+      FlightStatus.Cancelled,
+      FlightStatus.Unknown,
+    ])('leaves the flag of a %s flight alone', (status) => {
+      flight.status = status;
+
+      expect(flight.refreshDelay(at('11:00'), 15)).toBe(false);
+      expect(flight.isDelayed).toBe(false);
+
+      flight.isDelayed = true;
+      expect(flight.refreshDelay(at('09:00'), 15)).toBe(false);
+      expect(flight.isDelayed).toBe(true);
+    });
+  });
+
   describe('assertEditable', () => {
     it('allows every change on a scheduled flight with no orders or reservations', () => {
       expect(() =>

@@ -84,6 +84,7 @@ Settings come from `.env`, with optional overrides in `.env.local`. Copy `.env.e
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`                                 | Credentials for the Postgres container.                                                                                             |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`                           | Database connection for commands run on the host (`DB_PORT=5433`). Compose sets these for the API container itself.                 |
 | `AWS_S3_REGION`, `AWS_S3_BUCKET_NAME`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | S3 storage for airplane files. The region must not be blank or the API crashes at startup.                                          |
+| `DELAY_TOLERANCE_MINUTES`                                                           | Optional. Minutes past its departure before a flight still on the ground is marked delayed. Defaults to 15.                         |
 | `OURAIRPORTS_BASE_URL`                                                              | Optional. Where `npm run airports:import` downloads the CSVs from. Defaults to `https://davidmegginson.github.io/ourairports-data`. |
 | `APPLICATION_INSIGHTS_CONNECTION_STRING`                                            | Optional. Leave empty to disable Application Insights.                                                                              |
 
@@ -118,7 +119,7 @@ The full, interactive reference is the Swagger UI at `/docs`.
 
 ### Searching flights with `QUERY`
 
-Flight search uses the HTTP `QUERY` method, which works like `GET` but takes a request body. There is no `GET /flights`. Send the filters as JSON. All are optional: `origin` and `destination` (airport IATA codes), `departureFrom`, `departureTo`, `status`, `airlineCode`, `page` and `limit` (20 by default).
+Flight search uses the HTTP `QUERY` method, which works like `GET` but takes a request body. There is no `GET /flights`. Send the filters as JSON. All are optional: `origin` and `destination` (airport IATA codes), `departureFrom`, `departureTo`, `status`, `isDelayed` (`true` or `false`), `airlineCode`, `page` and `limit` (20 by default).
 
 ```bash
 curl -X QUERY http://localhost:3000/flights \
@@ -141,11 +142,11 @@ The bundled Swagger UI can't display `QUERY` operations, so this endpoint is mis
 
 ### Live flight updates
 
-`GET /flights/events` is a [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events) stream, so a browser can listen with `EventSource`. After a flight's status or schedule changes through `PATCH /flights/status` or `PATCH /flights/schedule`, it sends a `flight.updated` event with the fields a flight list shows:
+`GET /flights/events` is a [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events) stream, so a browser can listen with `EventSource`. After a flight's status or schedule changes through `PATCH /flights/status` or `PATCH /flights/schedule`, or the delay job marks it delayed, it sends a `flight.updated` event with the fields a flight list shows:
 
 ```text
 event: flight.updated
-data: {"id":"…","status":"scheduled","departure":"2026-11-10T12:30:00.000Z","arrival":"2026-11-10T17:30:00.000Z","wasRescheduled":true,"version":6}
+data: {"id":"…","status":"scheduled","departure":"2026-11-10T12:30:00.000Z","arrival":"2026-11-10T17:30:00.000Z","wasRescheduled":true,"isDelayed":false,"version":6}
 ```
 
 Use `version` to ignore an update older than the data you already have. The stream also sends a `ping` event every 30 seconds to keep the connection open. Try it with `curl -N http://localhost:3000/flights/events`.
@@ -165,7 +166,7 @@ Events are sent only after the change is committed. They are not stored, so a cl
 ### Architecture
 
 - **Business rules live on the entities**, and services orchestrate: they load entities, call methods on them and save. For example, `Flight.reserveSeat` and `Order.calculateTotal`.
-- **Services are split by use case** rather than one per module. Flights has `FlightsUpsertService`, `FlightsUpdateService`, `FlightsSearchService` and `FlightsReserveService`.
+- **Services are split by use case** rather than one per module. Flights has `FlightsUpsertService`, `FlightsUpdateService`, `FlightsSearchService`, `FlightsReserveService` and `FlightsDelayService`.
 - **Side effects use events.** For example, reserving a seat emits `flight.reserved`, and a subscriber in the passengers module emails the passenger. A status or schedule change emits `flight.updated`, which a subscriber in the flights module sends to the live updates stream.
 
 ### Flights and seats
@@ -174,6 +175,7 @@ Events are sent only after the change is committed. They are not stored, so a cl
 - When a flight is created, its seats are generated from the airplane's seat configuration (rows and columns per class) and stored as a JSON array on the flight.
 - Reserving a seat sets the passenger on that seat and adds the passenger to the flight. The flight row is locked during the reservation, so two passengers can't take the same seat.
 - Changing a flight's departure or arrival sets `wasRescheduled` to `true`. The status stays as it was, so a `scheduled` flight can still be edited.
+- A job runs every minute and sets `isDelayed` on flights that haven't departed yet (`scheduled`, check-in, gate or boarding statuses) once their departure plus `DELAY_TOLERANCE_MINUTES` (15 by default) has passed. The flag stays once the flight departs or is cancelled. Rescheduling recomputes it, so a new departure that is still ahead clears it. Only the departure is checked, not the arrival.
 
 ### Editing a flight
 

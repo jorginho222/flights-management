@@ -75,6 +75,12 @@ describe('FlightsSearchService', () => {
       });
     });
 
+    it.each([true, false])('filters by isDelayed %s', async (isDelayed) => {
+      await service.searchFlights({ isDelayed });
+
+      expect(lastWhere()).toEqual({ isDelayed });
+    });
+
     it('uses Between when both departure bounds are given', async () => {
       await service.searchFlights({ departureFrom: from, departureTo: to });
 
