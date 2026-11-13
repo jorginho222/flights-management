@@ -13,6 +13,7 @@ import { AirplanesService } from '../airplanes/airplanes.service';
 import { FlightStatus } from './types/flight.status';
 import { UpdateFlightScheduleDto } from './dto/update.flight.schedule.dto';
 import { UpdateFlightStatusDto } from './dto/update.flight.status.dto';
+import { DELAY_TOLERANCE_MINUTES } from './flight.delay.tolerance';
 import { CreateFlightDto } from './dto/create.flight.dto';
 import { Airplane } from '../airplanes/entities/airplane.entity';
 import { FlightClasses } from './types/flight.classes';
@@ -65,6 +66,7 @@ describe('FlightsUpsertService', () => {
     flight = Object.assign(new Flight(), { id: flightId, version: 3 });
     flight.status = FlightStatus.Scheduled;
     flight.wasRescheduled = false;
+    flight.isDelayed = false;
     flight.departure = departure;
     flight.arrival = arrival;
 
@@ -94,6 +96,7 @@ describe('FlightsUpsertService', () => {
         { provide: AirplanesService, useValue: { search: airplaneSearch } },
         { provide: DataSource, useValue: { transaction } },
         { provide: EventEmitter2, useValue: { emit } },
+        { provide: DELAY_TOLERANCE_MINUTES, useValue: 15 },
       ],
     }).compile();
 
@@ -327,6 +330,7 @@ describe('FlightsUpsertService', () => {
           departure,
           arrival,
           false,
+          false,
           3,
         ),
       );
@@ -389,9 +393,34 @@ describe('FlightsUpsertService', () => {
           newDeparture,
           newArrival,
           true,
+          false,
           3,
         ),
       );
+    });
+
+    it('marks the flight delayed when the new departure is already past the tolerance', async () => {
+      const result = await service.updateSchedule(
+        scheduleDto(
+          new Date('2020-01-01T10:00:00Z'),
+          new Date('2020-01-01T12:00:00Z'),
+        ),
+      );
+
+      expect(result.isDelayed).toBe(true);
+    });
+
+    it('clears the delay when the new departure is ahead', async () => {
+      flight.isDelayed = true;
+
+      const result = await service.updateSchedule(
+        scheduleDto(
+          new Date('2030-01-01T11:00:00Z'),
+          new Date('2030-01-01T13:00:00Z'),
+        ),
+      );
+
+      expect(result.isDelayed).toBe(false);
     });
 
     it('returns bad request and does not save an invalid schedule', async () => {

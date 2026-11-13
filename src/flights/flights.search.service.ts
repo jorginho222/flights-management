@@ -49,12 +49,13 @@ export class FlightsSearchService {
   private buildSearchWhere(
     searchDto: SearchFlightsDto,
   ): FindOptionsWhere<Flight> {
-    const { origin, destination, status, airlineCode } = searchDto;
+    const { origin, destination, status, isDelayed, airlineCode } = searchDto;
     const where: FindOptionsWhere<Flight> = {};
 
     if (origin) where.origin = { iataCode: origin };
     if (destination) where.destination = { iataCode: destination };
     if (status) where.status = status;
+    if (isDelayed !== undefined) where.isDelayed = isDelayed;
     if (airlineCode) where.airline = { code: airlineCode };
 
     const departure = this.buildDepartureRange(searchDto);

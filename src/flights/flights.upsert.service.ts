@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -21,6 +22,7 @@ import {
   nextFlightCode,
   saveWithFlightCode,
 } from './flights.lookups';
+import { DELAY_TOLERANCE_MINUTES } from './flight.delay.tolerance';
 
 @Injectable()
 export class FlightsUpsertService {
@@ -28,6 +30,8 @@ export class FlightsUpsertService {
     private readonly airplaneService: AirplanesService,
     private readonly dataSource: DataSource,
     private readonly eventEmitter: EventEmitter2,
+    @Inject(DELAY_TOLERANCE_MINUTES)
+    private readonly delayToleranceMinutes: number,
   ) {}
 
   async create(flightDto: CreateFlightDto): Promise<Flight> {
@@ -56,6 +60,7 @@ export class FlightsUpsertService {
         orders: [],
         status: FlightStatus.Scheduled,
         wasRescheduled: false,
+        isDelayed: false,
         basePrice: flightDto.basePrice,
       });
 
@@ -77,6 +82,8 @@ export class FlightsUpsertService {
       this.applyFlightRules(() =>
         flight.setSchedule(flightDto.departure, flightDto.arrival),
       );
+      // A new departure ahead clears the delay, and one already past sets it
+      flight.refreshDelay(new Date(), this.delayToleranceMinutes);
     });
     this.emitFlightUpdated(flight);
     return flight;

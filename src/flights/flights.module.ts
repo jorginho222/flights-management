@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { FlightsUpsertService } from './flights.upsert.service';
 import { FlightsController } from './flights.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -11,9 +12,12 @@ import { Airline } from '../airlines/entities/airline.entity';
 import { Airport } from '../airports/entities/airport.entity';
 import { FlightsUpdateService } from './flights.update.service';
 import { FlightUpdatesStream } from './subscribers/flight.updates.stream';
+import { FlightsDelayService } from './flights.delay.service';
+import { delayToleranceProvider } from './flight.delay.tolerance';
 
 @Module({
   imports: [
+    ConfigModule,
     TypeOrmModule.forFeature([Flight, Passenger, Airline, Airport]),
     AirplanesModule,
   ],
@@ -24,6 +28,8 @@ import { FlightUpdatesStream } from './subscribers/flight.updates.stream';
     FlightsSearchService,
     FlightsReserveService,
     FlightUpdatesStream,
+    FlightsDelayService,
+    delayToleranceProvider,
   ],
 })
 export class FlightsModule {}

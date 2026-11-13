@@ -10,7 +10,7 @@ import {
 } from 'typeorm';
 import { Airplane } from '../../airplanes/entities/airplane.entity';
 import { Passenger } from '../../passengers/entities/passenger.entity';
-import { FlightStatus } from '../types/flight.status';
+import { FlightStatus, PRE_DEPARTURE_STATUSES } from '../types/flight.status';
 import { FlightCode } from '../valueObjects/flight.code';
 import { flightCodeTransformer } from '../transformers/flight.code.transformer';
 import { AirplaneSeat } from '../valueObjects/airplane.seat';
@@ -84,10 +84,14 @@ export class Flight {
   @Column({ default: false })
   isFullyReserved: boolean;
 
-  // Set once departure or arrival changes through a schedule update. Whether
-  // that moved the flight earlier or later isn't kept yet.
   @Column({ default: false })
   wasRescheduled: boolean;
+
+  // Set while the flight is still on the ground past its departure plus the
+  // tolerance. It stays once the flight departs or is cancelled, and clears
+  // when a reschedule moves the departure ahead again.
+  @Column({ default: false })
+  isDelayed: boolean;
 
   // Bumped by every save of the flight, and by order creation, which doesn't
   // save it. The edit form sends the version it loaded, to tell whether
@@ -99,8 +103,6 @@ export class Flight {
     this.status = status;
   }
 
-  // Marks the flight rescheduled without touching its status, so a scheduled
-  // flight stays editable
   setSchedule(departure: Date, arrival: Date) {
     const changed =
       new Date(departure).getTime() !== new Date(this.departure).getTime() ||
@@ -113,6 +115,21 @@ export class Flight {
     if (changed) {
       this.wasRescheduled = true;
     }
+  }
+
+  // Only a flight that hasn't departed is checked, so a departed or cancelled
+  // flight keeps its flag. Returns whether the flag changed.
+  refreshDelay(now: Date, toleranceMinutes: number): boolean {
+    if (!PRE_DEPARTURE_STATUSES.includes(this.status)) {
+      return false;
+    }
+
+    const deadline =
+      new Date(this.departure).getTime() + toleranceMinutes * 60_000;
+    const isDelayed = now.getTime() > deadline;
+    const changed = isDelayed !== this.isDelayed;
+    this.isDelayed = isDelayed;
+    return changed;
   }
 
   setDeparture(departure: Date) {

@@ -18,6 +18,7 @@ describe('FlightUpdatesStream', () => {
     new Date('2030-01-01T11:00:00Z'),
     new Date('2030-01-01T13:00:00Z'),
     true,
+    false,
     4,
   );
 

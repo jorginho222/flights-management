@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsDate,
   IsEnum,
   IsInt,
@@ -62,6 +63,14 @@ export class SearchFlightsDto {
   @IsOptional()
   @IsEnum(FlightStatus)
   status?: FlightStatus;
+
+  @ApiPropertyOptional({
+    example: true,
+    description: 'Vuelos demorados (true) o a horario (false)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isDelayed?: boolean;
 
   @ApiPropertyOptional({ example: 'AC', description: 'Código de la aerolínea' })
   @IsOptional()

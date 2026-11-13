@@ -81,7 +81,7 @@ Because development relies on `synchronize`, a schema change on an entity works 
 
 **Domain logic sits on entities; services orchestrate.** Services load entities, call methods on them, and save. Examples are `Flight.reserveSeat` / `setSeats` and `Order.calculateTotal`. Put business rules on the entity.
 
-**Services are split by use case, not per module.** Flights has `FlightsUpsertService` (create, schedule, status), `FlightsUpdateService` (`PUT /flights/:flightId`), `FlightsSearchService` and `FlightsReserveService`. Orders follows the same pattern with `OrderUpsertService` and `OrderCancelService`.
+**Services are split by use case, not per module.** Flights has `FlightsUpsertService` (create, schedule, status), `FlightsUpdateService` (`PUT /flights/:flightId`), `FlightsSearchService`, `FlightsReserveService` and `FlightsDelayService` (the delay cron job). Orders follows the same pattern with `OrderUpsertService` and `OrderCancelService`.
 
 **Value objects are stored as JSON columns:**
 
@@ -110,7 +110,9 @@ Money columns use `moneyColumn` from `src/shared/common/money.ts` (`numeric(12,2
 
 **Rescheduling is a flag, not a status.** `Flight.setSchedule` sets `wasRescheduled` when departure or arrival changes and leaves `status` alone, so a rescheduled flight stays `scheduled` and editable. `FlightStatus` has no `delayed`, `advanced` or `onTime`.
 
-**Live flight updates use SSE.** `GET /flights/events` (`@Sse()` in `FlightsController`) streams `flight.updated` events (`FlightUpdatedEvent`: id, status, departure, arrival, wasRescheduled, version). `FlightsUpsertService.updateStatus` and `updateSchedule` emit them after the transaction commits, and `FlightUpdatesStream` (`src/flights/subscribers/`) pushes them into an in-memory `Subject` with a 30-second `ping`. So only clients on the same process get them, and missed events are not replayed. `PUT /flights/:flightId`, reservations and orders don't emit yet.
+**Delays are a flag set by a cron job.** `FlightsDelayService` runs every minute (`@nestjs/schedule`, with `ScheduleModule.forRoot()` in `AppModule`). It finds flights in `PRE_DEPARTURE_STATUSES` (`src/flights/types/flight.status.ts`) whose departure plus the tolerance has passed and that aren't flagged. Then it locks each one in its own transaction, rechecks it with `Flight.refreshDelay`, saves it (which bumps `version`) and emits `flight.updated` after the commit. `refreshDelay` leaves the flag alone once a flight is past those statuses, so departed and cancelled flights keep it. `updateSchedule` also calls it, so rescheduling to a future departure clears the flag. The tolerance comes from `DELAY_TOLERANCE_MINUTES` (default 15) through the `DELAY_TOLERANCE_MINUTES` injection token in `flight.delay.tolerance.ts`, so specs provide it with `useValue`. `@nestjs/schedule` is pinned to 6.x because 12.x is ESM-only, which Jest can't load in this CommonJS project.
+
+**Live flight updates use SSE.** `GET /flights/events` (`@Sse()` in `FlightsController`) streams `flight.updated` events (`FlightUpdatedEvent`: id, status, departure, arrival, wasRescheduled, isDelayed, version). `FlightsUpsertService.updateStatus` and `updateSchedule`, and `FlightsDelayService`, emit them after the transaction commits, and `FlightUpdatesStream` (`src/flights/subscribers/`) pushes them into an in-memory `Subject` with a 30-second `ping`. So only clients on the same process get them, and missed events are not replayed. `PUT /flights/:flightId`, reservations and orders don't emit yet.
 
 ## Work in progress
 
